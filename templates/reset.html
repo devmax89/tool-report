@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Dispositivo - DIGIL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="main-container" style="max-width: 800px;">
+        <div class="app-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo/terna_logo.png') }}" alt="Terna Logo">
+                </div>
+                <div class="header-text">
+                    <h1>Reset Dispositivo DIGIL</h1>
+                    <p>Sistema di reset per dispositivi con test interrotti</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-container">
+            <div class="alert alert-warning" style="margin-bottom: 30px;">
+                <h5>⚠️ Attenzione</h5>
+                <p>Utilizzare questa funzione SOLO per dispositivi che hanno avuto problemi durante il test e necessitano di essere resettati prima di poter eseguire un nuovo test.</p>
+            </div>
+            
+            <form id="resetForm" method="POST" action="/reset_device" onsubmit="return validateAndSubmit()">
+                <div class="form-section">
+                    <h3>🔧 Reset Dispositivo</h3>
+                    
+                    <div class="form-group">
+                        <label for="device_id">Client ID da resettare *</label>
+                        <input type="text" 
+                               class="form-control" 
+                               id="device_id" 
+                               name="device_id" 
+                               placeholder="es. 1:1:2:15:21:DIGIL_IND_0899"
+                               pattern="[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-9]+:DIGIL_[A-Z]+_[0-9]+"
+                               title="Formato: 1:1:2:15:21:DIGIL_XXX_0000"
+                               required>
+                        <div class="form-text">
+                            Inserisci il Client ID completo (es. 1:1:2:15:21:DIGIL_IND_0899)
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <h6>📋 Il processo di reset eseguirà:</h6>
+                        <ol style="margin: 10px 0 0 20px;">
+                            <li>Recupero configurazione attuale del dispositivo</li>
+                            <li>Cancellazione dal sistema di testing</li>
+                            <li>Reset dei parametri di test</li>
+                            <li>Reinserimento nel sistema come DISPONIBILE</li>
+                        </ol>
+                    </div>
+                    
+                    <div class="alert alert-warning" style="margin-top: 20px;">
+                        <strong>Nota:</strong> Assicurati che il Client ID sia corretto e che il dispositivo esista nel sistema prima di procedere.
+                    </div>
+                </div>
+            </form>
+        </div>
+        
+        <div class="button-group">
+            <a href="/" class="btn btn-secondary">
+                🏠 Torna alla Home
+            </a>
+            <button type="submit" form="resetForm" class="btn btn-warning" id="resetBtn">
+                🔄 Esegui Reset
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function validateAndSubmit() {
+            const deviceId = document.getElementById('device_id').value;
+            const resetBtn = document.getElementById('resetBtn');
+            
+            if (!deviceId) {
+                alert('Inserisci un Client ID valido');
+                return false;
+            }
+            
+            // Verifica formato base
+            const pattern = /^\d+:\d+:\d+:\d+:\d+:DIGIL_[A-Z]+_\d+$/;
+            if (!pattern.test(deviceId)) {
+                alert('Formato Client ID non valido.\nUsa il formato: 1:1:2:15:21:DIGIL_XXX_0000');
+                return false;
+            }
+            
+            const confirmed = confirm(`Sei sicuro di voler resettare il dispositivo ${deviceId}?\n\nQuesta operazione non può essere annullata.`);
+            
+            if (confirmed) {
+                resetBtn.disabled = true;
+                resetBtn.innerHTML = '<span class="spinner"></span> Reset in corso...';
+                return true;
+            }
+            
+            return false;
+        }
+    </script>
+</body>
+</html>

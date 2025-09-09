@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risultato Reset - DIGIL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="main-container" style="max-width: 700px; margin-top: 50px;">
+        <div class="app-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo/terna_logo.png') }}" alt="Terna Logo">
+                </div>
+                <div class="header-text">
+                    <h1 style="font-size: 1.8rem;">Risultato Reset</h1>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-container">
+            {% if success %}
+            <div class="alert alert-success">
+                <h4 style="color: #155724; margin-bottom: 15px;">✅ Reset Completato con Successo!</h4>
+                
+                <div style="background: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                    <p><strong>Device ID:</strong> <code>{{ device_id }}</code></p>
+                    <p><strong>Stato:</strong> <span class="badge badge-success">DISPONIBILE</span></p>
+                    
+                    {% if steps_log %}
+                    <hr style="margin: 15px 0;">
+                    <h6>Log operazioni:</h6>
+                    <ul style="list-style: none; padding: 0;">
+                        {% for step in steps_log %}
+                        <li style="padding: 5px 0;">
+                            <code style="font-size: 0.9rem;">✓ {{ step }}</code>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+                
+                <p style="text-align: center; margin-top: 20px;">
+                    Il dispositivo è ora pronto per un nuovo test.
+                </p>
+            </div>
+            {% else %}
+            <div class="alert alert-danger">
+                <h4 style="color: #721c24; margin-bottom: 15px;">❌ Errore durante il Reset</h4>
+                
+                <div style="background: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                    {% if device_id %}
+                    <p><strong>Device ID:</strong> <code>{{ device_id }}</code></p>
+                    {% endif %}
+                    
+                    <p><strong>Errore:</strong> {{ error }}</p>
+                    
+                    {% if steps_log %}
+                    <hr style="margin: 15px 0;">
+                    <h6>Log operazioni (fino all'errore):</h6>
+                    <ul style="list-style: none; padding: 0;">
+                        {% for step in steps_log %}
+                        <li style="padding: 5px 0;">
+                            <code style="font-size: 0.9rem;">{{ step }}</code>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="button-group" style="justify-content: center;">
+                <a href="/reset" class="btn btn-warning">
+                    🔄 Reset Altro Dispositivo
+                </a>
+                <a href="/" class="btn btn-primary">
+                    🏠 Torna alla Home
+                </a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

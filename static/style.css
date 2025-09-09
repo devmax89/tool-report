@@ -460,3 +460,34 @@ body {
     background: #f8d7da;
     color: #721c24;
 }
+
+/* Stili per numeri ordinati */
+ol {
+    line-height: 1.8;
+}
+
+ol li {
+    margin-bottom: 5px;
+}
+
+/* Miglioramento per i log code */
+code {
+    font-family: 'Courier New', Consolas, monospace;
+}
+
+/* Animazione per il loading durante il reset */
+.processing {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.processing::after {
+    content: " Processing...";
+    animation: dots 1.5s infinite;
+}
+
+@keyframes dots {
+    0%, 20% { content: " Processing."; }
+    40% { content: " Processing.."; }
+    60%, 100% { content: " Processing..."; }
+}

@@ -472,6 +472,127 @@ def preview_report():
             <p>Assicurati che tutti i campi siano compilati correttamente e che la connessione di rete sia attiva.</p>
         </div>
         """
+    
+@app.route('/reset')
+def reset_page():
+    """Pagina per il reset dei dispositivi"""
+    return render_template('reset.html')
+
+@app.route('/reset_device', methods=['POST'])
+def reset_device():
+    """Esegue il reset del dispositivo"""
+    try:
+        device_id = request.form.get('device_id')
+        
+        if not device_id:
+            return render_template('reset_result.html', 
+                                 success=False, 
+                                 error="Device ID non fornito")
+        
+        # Parametri di connessione (dal tuo reset_test.py)
+        ese_test = "device-fabbrica-testing-backend-ese.servizi.prv"
+        dev_auth_token = "HDqJXsH41Y84dBE3yyLdfBcpMNI0RGlp"
+        
+        steps_log = []
+        
+        # Step 1: GET request (get conf of digil, sensori tiro etc)
+        get_url = f"http://{ese_test}/doc"
+        get_params = {
+            "token": dev_auth_token,
+            "docId": device_id  # Usa il ClientID completo es. 1:1:2:15:21:DIGIL_IND_0899
+        }
+        
+        print(f"🔍 Tentativo reset per device: {device_id}")
+        get_response = requests.get(get_url, params=get_params)
+        steps_log.append(f"GET /doc response status: {get_response.status_code}")
+        print(f"GET /doc response status: {get_response.status_code}")
+        
+        if get_response.status_code != 200:
+            error_msg = f"Dispositivo non trovato o errore nel recupero: HTTP {get_response.status_code}"
+            if get_response.text:
+                error_msg += f" - {get_response.text[:200]}"
+            raise Exception(error_msg)
+        
+        # Verifica che la risposta contenga JSON valido
+        try:
+            response_text = get_response.text
+            if not response_text:
+                raise Exception("Risposta vuota dal server")
+            get_json = get_response.json()
+        except json.JSONDecodeError as je:
+            print(f"Response text: {response_text[:500] if 'response_text' in locals() else 'N/A'}")
+            raise Exception(f"Risposta non valida dal server. Il dispositivo potrebbe non esistere.")
+        
+        # Step 2: DELETE request
+        delete_url = f"http://{ese_test}/devices-testing"
+        delete_params = {
+            "token": dev_auth_token,
+            "deviceId": device_id  # ClientID completo
+        }
+        
+        delete_response = requests.delete(delete_url, params=delete_params)
+        steps_log.append(f"DELETE /devices-testing response status: {delete_response.status_code}")
+        print(f"DELETE /devices-testing response status: {delete_response.status_code}")
+        
+        if delete_response.status_code != 200:
+            raise Exception(f"Errore nella cancellazione: HTTP {delete_response.status_code}")
+        
+        # Step 3: POST request
+        post_url = f"http://{ese_test}/doc-test-replace"
+        post_params = {"token": dev_auth_token}
+        
+        # Prepara il body esattamente come nel reset_test.py originale
+        post_body = get_json
+        post_body["id"] = device_id  # ClientID completo
+        post_body["scenariesName"] = []
+        post_body["topics"] = []
+        post_body["isEvaluatedCorrect"] = False
+        post_body["deviceStatus"] = "DISPONIBILE"
+        post_body["scenarioMetricheAllarme"] = None
+        post_body["scenarioMetricheInRange"] = None
+        post_body["scenarioDownlink"] = None
+        
+        post_response = requests.post(post_url, params=post_params, json=post_body)
+        steps_log.append(f"POST /doc-test-replace response status: {post_response.status_code}")
+        print(f"POST /doc-test-replace response status: {post_response.status_code}")
+        
+        if post_response.status_code != 200:
+            raise Exception(f"Errore nell'aggiornamento: HTTP {post_response.status_code}")
+        
+        # Step 4: PUT request
+        put_url = f"http://{ese_test}/devices-testing"
+        put_params = {
+            "token": dev_auth_token,
+            "deviceId": device_id  # ClientID completo
+        }
+        
+        put_response = requests.put(put_url, params=put_params)
+        steps_log.append(f"PUT /devices-testing response status: {put_response.status_code}")
+        print(f"PUT /devices-testing response status: {put_response.status_code}")
+        
+        if put_response.status_code != 200:
+            raise Exception(f"Errore nel ripristino: HTTP {put_response.status_code}")
+        
+        # Controlla se tutti gli status sono 200
+        if (get_response.status_code == 200 and delete_response.status_code == 200 and 
+            post_response.status_code == 200 and put_response.status_code == 200):
+            print(f"  ✅  RESET SUCCESS per device: {device_id}")
+            return render_template('reset_result.html', 
+                                 success=True, 
+                                 device_id=device_id,
+                                 steps_log=steps_log)
+        else:
+            print(f"  ❌  RESET FAILED per device: {device_id}")
+            raise Exception("Non tutti gli step hanno restituito status 200")
+        
+    except Exception as e:
+        print(f"Exception raised: {e}")
+        print(f"  ❌  RESET FAILED")
+        return render_template('reset_result.html', 
+                             success=False, 
+                             device_id=device_id if 'device_id' in locals() else None,
+                             error=str(e),
+                             steps_log=steps_log if 'steps_log' in locals() else [])
 
 def open_browser():
     """Apre il browser dopo 1.5 secondi"""
