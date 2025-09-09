@@ -10,7 +10,8 @@ a = Analysis(
     datas=[
         ('templates', 'templates'),
         ('templates_excel', 'templates_excel'),
-        ('static', 'static')
+        ('static', 'static'),
+        ('static/logo', 'static/logo')  # Aggiungi questa linea per il logo
     ],
     hiddenimports=[],
     hookspath=[],
@@ -23,10 +24,10 @@ a = Analysis(
     noarchive=False,
 )
 
-pyd = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
-    pyd,
+    pyz,
     a.scripts,
     a.binaries,
     a.zipfiles,

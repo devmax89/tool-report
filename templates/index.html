@@ -3,14 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DIGIL Report Generator</title>
+    <title>DIGIL Report Generator - Terna</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="main-container">
         <div class="app-header">
-            <h1>🔧 DIGIL Report Generator</h1>
-            <p>Sistema di generazione report per dispositivi DIGIL</p>
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo/terna_logo.png') }}" alt="Terna Logo">
+                </div>
+                <div class="header-text">
+                    <h1>DIGIL Report Generator</h1>
+                    <p>Sistema di generazione report per dispositivi DIGIL</p>
+                </div>
+            </div>
         </div>
         
         <div class="form-container">
@@ -88,6 +95,10 @@
         <div id="preview" style="display:none;">
             <!-- Preview content will be loaded here -->
         </div>
+        
+        <div class="footer">
+            <p>DIGIL Report Generator v1.0</p>
+        </div>
     </div>
 
     <script>
@@ -97,7 +108,7 @@
             
             // Mostra loading
             const previewDiv = document.getElementById('preview');
-            previewDiv.innerHTML = '<div class="alert alert-info">Caricamento anteprima...</div>';
+            previewDiv.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Caricamento anteprima...</div>';
             previewDiv.style.display = 'block';
             
             fetch('/preview', {
