@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Report Generato - DIGIL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="main-container" style="max-width: 700px; margin-top: 50px;">
+        <div class="app-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo/terna_logo.png') }}" alt="Terna Logo">
+                </div>
+                <div class="header-text">
+                    <h1 style="font-size: 1.8rem;">Report Generato</h1>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-container">
+            <div class="alert alert-success">
+                <h4 style="color: #155724; margin-bottom: 15px;">✅ Report Generato con Successo!</h4>
+                
+                <div style="background: white; padding: 15px; border-radius: 6px; margin: 15px 0;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><strong>File ZIP:</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><code>{{ zip_filename }}</code></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><strong>Percorso:</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><code style="font-size: 0.85rem;">{{ zip_path }}</code></td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><strong>Vendor:</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;">{{ vendor }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;"><strong>Device ID:</strong></td>
+                            <td style="padding: 8px; border-bottom: 1px solid #e9ecef;">{{ device_id }}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px;"><strong>Data Test:</strong></td>
+                            <td style="padding: 8px;">{{ date_formatted }}</td>
+                        </tr>
+                    </table>
+                </div>
+                
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="/" class="btn btn-primary" style="text-decoration: none;">
+                        🔄 Genera Nuovo Report
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

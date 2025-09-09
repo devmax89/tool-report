@@ -1,5 +1,5 @@
 # app.py - VERSIONE COMPLETA CON API
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, url_for
 import pandas as pd
 from openpyxl import load_workbook
 from datetime import datetime, timedelta
@@ -14,6 +14,8 @@ import sys
 import requests
 import json
 import urllib.parse
+import zipfile
+from pathlib import Path
 
 app = Flask(__name__)
 
@@ -306,6 +308,10 @@ def create_excel_report(data):
 def index():
     return render_template('index.html')
 
+# Aggiungi questi import all'inizio del file app.py (dopo gli altri import)
+import zipfile
+from pathlib import Path
+
 @app.route('/generate', methods=['POST'])
 def generate_report():
     try:
@@ -323,40 +329,85 @@ def generate_report():
         # Genera Excel
         wb = create_excel_report(data)
         
-        # Crea nome file nel formato richiesto
+        # Estrai solo le ultime 4 cifre del Device ID per il nome
+        # es. da "1:1:2:16:22:DIGIL_MRN_0299" prendi "0299"
+        device_digits = ''.join(filter(str.isdigit, data['device_id']))
+        device_short = device_digits[-4:] if len(device_digits) >= 4 else device_digits
+        
+        # Formatta la data per il nome file (DD-MM-YYYY)
+        date_obj = datetime.strptime(data['start_date'], "%Y-%m-%d")
+        date_formatted = date_obj.strftime("%d-%m-%Y")
+        
+        # Pulisci il vendor name per il filename (rimuovi caratteri speciali)
+        vendor_clean = data['vendor'].replace('/', '-').replace('\\', '-')
+        
+        # Nuovo naming convention per il ZIP
+        # "Report MII - 02-09-2025 - 464.zip"
+        zip_filename = f"Report {vendor_clean} - {date_formatted} - {device_short}.zip"
+        
+        # Nome del file Excel dentro il ZIP (manteniamo il formato originale)
         datetime_start = datetime.strptime(f"{data['start_date']} {data['start_time']}", "%Y-%m-%d %H:%M")
-        filename = f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+        excel_filename = f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         
-        # Crea cartella con Device ID trasformato (usa fallback per nome cartella)
-        device_folder = transform_device_id(data['device_id'])
-        folder_path = os.path.join('output', device_folder)
+        # Crea cartella output se non esiste
+        output_dir = Path('output')
+        output_dir.mkdir(exist_ok=True)
         
-        # Crea la cartella se non esiste
-        os.makedirs(folder_path, exist_ok=True)
+        # Crea sottocartella per vendor se non esiste
+        vendor_dir = output_dir / vendor_clean
+        vendor_dir.mkdir(exist_ok=True)
         
-        # Percorso completo del file
-        file_path = os.path.join(folder_path, filename)
+        # Percorso completo del file ZIP
+        zip_path = vendor_dir / zip_filename
         
-        # Salva il file nella cartella
-        wb.save(file_path)
+        # Salva prima il file Excel in temp
+        temp_excel = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+        wb.save(temp_excel.name)
+        temp_excel.close()
         
-        print(f"File salvato in: {file_path}")
+        # Crea il file ZIP e aggiungi l'Excel
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            zipf.write(temp_excel.name, excel_filename)
         
-        # Ritorna messaggio di successo invece del download
-        return f"""
-        <div class="container mt-5">
-            <div class="alert alert-success">
-                <h4>✅ Report Generato con Successo!</h4>
-                <p><strong>File salvato:</strong> <code>{filename}</code></p>
-                <p><strong>Percorso:</strong> <code>{file_path}</code></p>
-                <hr>
-                <a href="/" class="btn btn-primary">🔄 Genera Nuovo Report</a>
-            </div>
-        </div>
-        """
+        # Rimuovi il file temporaneo
+        os.unlink(temp_excel.name)
+        
+        print(f"✅ Report salvato in: {zip_path}")
+        
+        # Ritorna messaggio di successo con template rendering
+        return render_template('success.html', 
+                             zip_filename=zip_filename,
+                             zip_path=str(zip_path),
+                             vendor=data['vendor'],
+                             device_id=data['device_id'],
+                             date_formatted=date_formatted)
     
     except Exception as e:
-        return f"Errore nella generazione del report: {str(e)}", 500
+        return render_template('error.html', error_message=str(e))
+    
+    except Exception as e:
+        return f"""
+        <!DOCTYPE html>
+        <html lang="it">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Errore</title>
+            <link rel="stylesheet" href="{url_for('static', filename='style.css')}">
+        </head>
+        <body>
+            <div class="main-container" style="max-width: 600px; margin-top: 50px;">
+                <div class="alert alert-danger" style="margin: 20px;">
+                    <h4>❌ Errore nella generazione del report</h4>
+                    <p>{str(e)}</p>
+                    <div style="text-align: center; margin-top: 20px;">
+                        <a href="/" class="btn btn-primary">🔙 Torna Indietro</a>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
 
 @app.route('/preview', methods=['POST'])
 def preview_report():

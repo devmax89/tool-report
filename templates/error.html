@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Errore - DIGIL</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="main-container" style="max-width: 600px; margin-top: 50px;">
+        <div class="app-header">
+            <div class="header-content">
+                <div class="logo-container">
+                    <img src="{{ url_for('static', filename='logo/terna_logo.png') }}" alt="Terna Logo">
+                </div>
+                <div class="header-text">
+                    <h1 style="font-size: 1.8rem;">Errore</h1>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-container">
+            <div class="alert alert-danger">
+                <h4 style="color: #721c24; margin-bottom: 15px;">❌ Errore nella generazione del report</h4>
+                <p style="margin: 15px 0;">{{ error_message }}</p>
+                <div style="text-align: center; margin-top: 25px;">
+                    <a href="/" class="btn btn-primary" style="text-decoration: none;">
+                        🔙 Torna alla Home
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
