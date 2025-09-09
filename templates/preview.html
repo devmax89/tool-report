@@ -1,0 +1,31 @@
+<div class="card">
+    <div class="card-header">
+        <h5>📋 Anteprima Report</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Configurazione:</h6>
+                <ul class="list-unstyled">
+                    <li><strong>Sensori:</strong> {{ data.num_sensors }}</li>
+                    <li><strong>Vendor:</strong> {{ data.vendor }}</li>
+                    <li><strong>Device ID:</strong> {{ data.device_id }}</li>
+                    <li><strong>Data Test:</strong> {{ data.start_date_formatted }}</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h6>Parametri che verranno inseriti:</h6>
+                <ul class="list-unstyled">
+                    <li><strong>{deviceId}=</strong><code>{{ transformed_device_id }}</code></li>
+                    <li><strong>Range Metriche:</strong> {{ metrics.range_metriche }}</li>
+                    <li><strong>Allarme Metriche:</strong> {{ metrics.allarme_metriche }}</li>
+                    <li><strong>Allarmi:</strong> {{ metrics.allarmi }}</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="alert alert-success mt-3">
+            ✅ Configurazione valida! Il report conterrà 4 sheet con tutti i parametri aggiornati automaticamente.
+        </div>
+    </div>
+</div>

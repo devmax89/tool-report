@@ -1,0 +1,439 @@
+# app.py - VERSIONE COMPLETA CON API
+from flask import Flask, render_template, request, send_file
+import pandas as pd
+from openpyxl import load_workbook
+from datetime import datetime, timedelta
+import os
+import tempfile
+import re
+import shutil
+import webbrowser
+import threading
+import time
+import sys
+import requests
+import json
+import urllib.parse
+
+app = Flask(__name__)
+
+# Variabili globali per gestire il token
+current_token = None
+token_expires_at = None
+
+def get_auth_token():
+    """Ottiene un nuovo token di autenticazione"""
+    global current_token, token_expires_at
+    
+    url = "https://rh-sso.apps.clusterzac.opencs.servizi.prv/auth/realms/DigilV2/protocol/openid-connect/token"
+    
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': '86ff86b2f35123846fde75fccaac9811=f7ac6d867938d069d19133ee2b4f177b'
+    }
+    
+    data = {
+        'grant_type': 'client_credentials',
+        'client_id': 'application', 
+        'client_secret': 'q3pH03oAvt9io1K1rJ9GHVVRcmAEf55x'
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, data=data, verify=False)
+        response.raise_for_status()
+        
+        token_data = response.json()
+        current_token = token_data['access_token']
+        
+        # Il token scade dopo 300 secondi, impostiamo scadenza a 290s per sicurezza
+        token_expires_at = datetime.now() + timedelta(seconds=290)
+        
+        print(f"✅ Token ottenuto, scade alle: {token_expires_at.strftime('%H:%M:%S')}")
+        return current_token
+        
+    except Exception as e:
+        print(f"❌ Errore ottenimento token: {e}")
+        raise Exception(f"Impossibile ottenere il token di autenticazione: {e}")
+
+def is_token_valid():
+    """Verifica se il token corrente è ancora valido"""
+    global current_token, token_expires_at
+    
+    if not current_token or not token_expires_at:
+        return False
+    
+    # Controlla se il token è scaduto (con margine di 10 secondi)
+    return datetime.now() < (token_expires_at - timedelta(seconds=10))
+
+def get_valid_token():
+    """Ottiene un token valido, rinnovandolo se necessario"""
+    if not is_token_valid():
+        print("🔄 Token scaduto o mancante, ottengo nuovo token...")
+        return get_auth_token()
+    else:
+        print("✅ Token ancora valido")
+        return current_token
+
+def get_device_id_from_api(device_name):
+    """Ottiene il vero Device ID tramite API"""
+    try:
+        # Ottieni un token valido
+        token = get_valid_token()
+        
+        # URL encode del nome dispositivo
+        encoded_name = urllib.parse.quote(device_name)
+        url = f"https://digil-back-end-onesait.servizi.prv/api/v1/digils?name={encoded_name}"
+        
+        headers = {
+            'Accept': 'application/json',
+            'Authorization': f'Bearer {token}',
+            'Cookie': '7d1097d461d8e1d826eafd90fa29677c=6d499b21fdd884f7ee7979268d91e421'
+        }
+        
+        print(f"🔍 Ricerca device: {device_name}")
+        response = requests.get(url, headers=headers, verify=False)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # Estrae l'ID dal primo elemento del content
+        if data.get('content') and len(data['content']) > 0:
+            device_id = data['content'][0]['id']
+            print(f"✅ Device ID trovato: {device_id}")
+            return device_id
+        else:
+            raise Exception(f"Dispositivo non trovato: {device_name}")
+            
+    except Exception as e:
+        print(f"❌ Errore ricerca device: {e}")
+        raise Exception(f"Impossibile ottenere Device ID per {device_name}: {e}")
+
+def transform_device_id(device_id):
+    """Trasforma 1:1:2:16:22:DIGIL_MRN_0299 in 1121622_0299 (FALLBACK)"""
+    # Rimuovi i ":"
+    no_colons = device_id.replace(":", "")
+    # Estrai solo i numeri
+    numbers = ''.join(filter(str.isdigit, no_colons))
+    # Prendi i primi numeri e gli ultimi 4 con "_"
+    if len(numbers) >= 4:
+        main_part = numbers[:-4]
+        last_four = numbers[-4:]
+        return f"{main_part}_{last_four}"
+    return numbers
+
+def transform_device_id_new(device_name):
+    """Nuova funzione che ottiene il Device ID dalle API invece di trasformarlo"""
+    try:
+        # Ottiene il vero Device ID dalle API
+        api_device_id = get_device_id_from_api(device_name)
+        return api_device_id
+    except Exception as e:
+        print(f"⚠️ Errore API, uso trasformazione locale: {e}")
+        # Fallback alla vecchia trasformazione se le API non funzionano
+        return transform_device_id(device_name)
+
+def format_date_for_sheet(date_str, time_str):
+    """Formatta data per i sheet"""
+    # Converte da YYYY-MM-DD a DD/MM/YYYY
+    date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+    formatted_date = date_obj.strftime("%d/%m/%Y")
+    return f"{formatted_date} - {time_str}"
+
+def format_date_for_api(start_date, start_time, end_date, end_time):
+    """Formatta date per le API nel formato ISO"""
+    # Aggiungi i secondi se mancano
+    if len(start_time) == 5:  # HH:MM
+        start_time += ":00"   # HH:MM:SS
+    if len(end_time) == 5:    # HH:MM  
+        end_time += ":00"     # HH:MM:SS
+    
+    start_dt = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M:%S")
+    end_dt = datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M:%S")
+    
+    start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%S.000000000Z")
+    end_iso = end_dt.strftime("%Y-%m-%dT%H:%M:%S.999999999Z")
+    
+    return start_iso, end_iso
+
+def get_sensor_metrics(num_sensors):
+    """Restituisce le metriche per il numero di sensori"""
+    metrics = {
+        3: {"range_metriche": 16, "allarme_metriche": 10, "allarmi": 4},
+        6: {"range_metriche": 25, "allarme_metriche": 13, "allarmi": 7},
+        12: {"range_metriche": 43, "allarme_metriche": 19, "allarmi": 13}
+    }
+    return metrics.get(num_sensors, metrics[3])
+
+def update_common_parameters(ws, data):
+    """Aggiorna i parametri comuni nel worksheet - RICERCA GENERICA"""
+    print(f"=== DEBUG SHEET: {ws.title} ===")
+    
+    # Prima aggiorna il titolo
+    try:
+        if ws['A1'].value and "Test Report -" in str(ws['A1'].value):
+            date_obj = datetime.strptime(data['start_date'], "%Y-%m-%d")
+            formatted_date = date_obj.strftime("%d/%m/%Y")
+            old_value = ws['A1'].value
+            ws['A1'].value = f"Test Report - {formatted_date}"
+            print(f"A1 - Da: '{old_value}' A: '{ws['A1'].value}'")
+    except:
+        pass
+    
+    # Scansione completa con pattern più generici
+    for row_num in range(1, 25):  # Aumentiamo il range
+        for col_num in range(1, 10):
+            try:
+                cell = ws.cell(row=row_num, column=col_num)
+                
+                if cell.value and isinstance(cell.value, str):
+                    
+                    # Cerca date in formato DD/MM/YYYY - HH:MM:SS (per Inizio/Termine Test)
+                    if "05/08/2025 -" in cell.value or "05/08/2025-" in cell.value:
+                        if "13:28" in cell.value or "09:00" in cell.value:  # Inizio Test
+                            print(f"TROVATO Inizio Test in {cell.coordinate}: '{cell.value}'")
+                            old_value = cell.value
+                            cell.value = data['start_test']
+                            print(f"AGGIORNATO {cell.coordinate}: '{old_value}' → '{cell.value}'")
+                        elif "14:02" in cell.value or "18:00" in cell.value:  # Termine Test  
+                            print(f"TROVATO Termine Test in {cell.coordinate}: '{cell.value}'")
+                            old_value = cell.value
+                            cell.value = data['end_test']
+                            print(f"AGGIORNATO {cell.coordinate}: '{old_value}' → '{cell.value}'")
+                    
+                    # Cerca specificamente "MII" come vendor (non toccare Topics Involved)
+                    elif cell.value.strip() == "MII" and row_num > 5:  # Evita headers
+                        print(f"TROVATO Vendor MII in {cell.coordinate}: '{cell.value}'")
+                        old_value = cell.value
+                        cell.value = data['vendor']
+                        print(f"AGGIORNATO {cell.coordinate}: '{old_value}' → '{cell.value}'")
+                    
+                    # Cerca Device ID con pattern specifico
+                    elif cell.value.startswith("1:1:2:16:22:DIGIL_MRN_") or cell.value.startswith("1:1:2:15:21:DIGIL_IND_"):
+                        print(f"TROVATO Device ID in {cell.coordinate}: '{cell.value}'")
+                        old_value = cell.value
+                        cell.value = data['device_id']
+                        print(f"AGGIORNATO {cell.coordinate}: '{old_value}' → '{cell.value}'")
+                        
+            except Exception as e:
+                continue
+    
+    print(f"=== FINE DEBUG SHEET: {ws.title} ===\n")
+
+def update_downlink_parameters(ws, transformed_device_id, data):
+    """Aggiorna i parametri dello sheet Downlink - VERSIONE CORRETTA"""
+    start_iso, end_iso = format_date_for_api(data['start_date'], data['start_time'], 
+                                            data['end_date'], data['end_time'])
+    
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value and isinstance(cell.value, str):
+                # Sostituisci SOLO gli ID dopo {deviceId}= mantenendo il formato
+                if "{deviceId}=" in cell.value:
+                    # Pattern: {deviceId}=1121622_0299 -> {deviceId}=API_DEVICE_ID
+                    cell.value = re.sub(
+                        r'\{deviceId\}=[^,\s}]+', 
+                        f'{{deviceId}}={transformed_device_id}', 
+                        cell.value
+                    )
+                
+                # Aggiorna le date ISO
+                if "startDate=" in cell.value:
+                    cell.value = re.sub(
+                        r'startDate=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z',
+                        f'startDate={start_iso}',
+                        cell.value
+                    )
+                if "endDate=" in cell.value:
+                    cell.value = re.sub(
+                        r'endDate=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{9}Z',
+                        f'endDate={end_iso}',
+                        cell.value
+                    )
+
+def create_excel_report(data):
+    """Crea il report Excel compilato basandosi sui template reali"""
+    
+    # Gestisce percorsi sia per sviluppo che per exe
+    if getattr(sys, 'frozen', False):
+        # Se è un exe, usa il percorso temporaneo di PyInstaller
+        base_path = sys._MEIPASS
+    else:
+        # Se è in sviluppo, usa il percorso normale
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # Carica il template appropriato
+    template_path = os.path.join(base_path, "templates_excel", f"esempio_{data['num_sensors']:02d}.xlsx")
+    
+    print(f"Cercando template in: {template_path}")  # Debug
+    
+    if not os.path.exists(template_path):
+        raise FileNotFoundError(f"Template non trovato: {template_path}")
+    
+    wb = load_workbook(template_path)
+    
+    # NOVITÀ: Ottiene il Device ID dalle API invece di trasformarlo
+    print("🔄 Ottenimento Device ID dalle API...")
+    transformed_device_id = transform_device_id_new(data['device_id'])
+    
+    start_formatted = format_date_for_sheet(data['start_date'], data['start_time'])
+    end_formatted = format_date_for_sheet(data['end_date'], data['end_time'])
+    
+    common_data = {
+        'start_test': start_formatted,
+        'end_test': end_formatted,
+        'vendor': data['vendor'],
+        'device_id': data['device_id'],
+        'start_date': data['start_date'],
+        'start_time': data['start_time'],
+        'end_date': data['end_date'],
+        'end_time': data['end_time']
+    }
+    
+    # Aggiorna ogni sheet
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        
+        # Aggiorna parametri comuni
+        update_common_parameters(ws, common_data)
+        
+        # Aggiornamenti specifici per Downlink
+        if "Downlink" in sheet_name:
+            update_downlink_parameters(ws, transformed_device_id, common_data)
+    
+    return wb
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/generate', methods=['POST'])
+def generate_report():
+    try:
+        # Raccolta dati dal form
+        data = {
+            'num_sensors': int(request.form['num_sensors']),
+            'start_date': request.form['start_date'],
+            'start_time': request.form['start_time'],
+            'end_date': request.form['end_date'],
+            'end_time': request.form['end_time'],
+            'vendor': request.form['vendor'],
+            'device_id': request.form['device_id']
+        }
+        
+        # Genera Excel
+        wb = create_excel_report(data)
+        
+        # Crea nome file nel formato richiesto
+        datetime_start = datetime.strptime(f"{data['start_date']} {data['start_time']}", "%Y-%m-%d %H:%M")
+        filename = f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+        
+        # Crea cartella con Device ID trasformato (usa fallback per nome cartella)
+        device_folder = transform_device_id(data['device_id'])
+        folder_path = os.path.join('output', device_folder)
+        
+        # Crea la cartella se non esiste
+        os.makedirs(folder_path, exist_ok=True)
+        
+        # Percorso completo del file
+        file_path = os.path.join(folder_path, filename)
+        
+        # Salva il file nella cartella
+        wb.save(file_path)
+        
+        print(f"File salvato in: {file_path}")
+        
+        # Ritorna messaggio di successo invece del download
+        return f"""
+        <div class="container mt-5">
+            <div class="alert alert-success">
+                <h4>✅ Report Generato con Successo!</h4>
+                <p><strong>File salvato:</strong> <code>{filename}</code></p>
+                <p><strong>Percorso:</strong> <code>{file_path}</code></p>
+                <hr>
+                <a href="/" class="btn btn-primary">🔄 Genera Nuovo Report</a>
+            </div>
+        </div>
+        """
+    
+    except Exception as e:
+        return f"Errore nella generazione del report: {str(e)}", 500
+
+@app.route('/preview', methods=['POST'])
+def preview_report():
+    try:
+        # Validazione campi obbligatori
+        required_fields = {
+            'num_sensors': 'Numero Sensori',
+            'device_id': 'Device ID', 
+            'vendor': 'Vendor',
+            'start_date': 'Data Inizio',
+            'start_time': 'Ora Inizio'
+        }
+        
+        missing_fields = []
+        for field, label in required_fields.items():
+            if not request.form.get(field):
+                missing_fields.append(label)
+        
+        if missing_fields:
+            fields_str = ", ".join(missing_fields)
+            return f"""
+            <div class="alert alert-warning">
+                <h5>⚠️ Campi Mancanti</h5>
+                <p>Per favore compila tutti i campi obbligatori: <strong>{fields_str}</strong></p>
+            </div>
+            """
+        
+        # Se tutto ok, procedi normalmente
+        data = {
+            'num_sensors': int(request.form['num_sensors']),
+            'device_id': request.form['device_id'],
+            'vendor': request.form['vendor'],
+            'start_date': request.form['start_date'],
+            'start_time': request.form['start_time']
+        }
+        
+        # Formatta la data
+        date_obj = datetime.strptime(data['start_date'], "%Y-%m-%d")
+        data['start_date_formatted'] = date_obj.strftime("%d-%m-%Y")
+        
+        # NOVITÀ: Ottiene il vero Device ID dalle API per preview
+        print("🔍 Preview: ottenimento Device ID dalle API...")
+        transformed_id = transform_device_id_new(data['device_id'])
+        metrics = get_sensor_metrics(data['num_sensors'])
+        
+        start_formatted = format_date_for_sheet(data['start_date'], data['start_time'])
+        
+        preview_data = {
+            'transformed_device_id': transformed_id,
+            'metrics': metrics,
+            'data': data,
+            'start_formatted': start_formatted
+        }
+        
+        return render_template('preview.html', **preview_data)
+    
+    except Exception as e:
+        return f"""
+        <div class="alert alert-danger">
+            <h5>❌ Errore</h5>
+            <p>Si è verificato un errore: <strong>{str(e)}</strong></p>
+            <p>Assicurati che tutti i campi siano compilati correttamente e che la connessione di rete sia attiva.</p>
+        </div>
+        """
+
+def open_browser():
+    """Apre il browser dopo 1.5 secondi"""
+    time.sleep(1.5)
+    webbrowser.open('http://localhost:5000')
+
+if __name__ == '__main__':
+    # Se è un exe, apri automaticamente il browser
+    if getattr(sys, 'frozen', False):
+        threading.Thread(target=open_browser, daemon=True).start()
+        print("🚀 DIGIL Report Generator avviato!")
+        print("📱 Il browser si aprirà automaticamente...")
+        print("🌐 URL: http://localhost:5000")
+        print("❌ Per chiudere: premi Ctrl+C")
+    
+    app.run(debug=False, port=5000)
