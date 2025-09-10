@@ -48,6 +48,23 @@
                     </table>
                 </div>
                 
+                {% if email_result %}
+                <div style="margin: 15px 0;">
+                    {% if email_result.success %}
+                    <div class="alert alert-info" style="background: #d1ecf1; border: 1px solid #bee5eb; padding: 15px; border-radius: 6px;">
+                        <h5 style="color: #0c5460; margin-bottom: 10px;">📧 Email Inviata</h5>
+                        <p style="margin: 0; color: #0c5460;">{{ email_result.message }}</p>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning" style="background: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 6px;">
+                        <h5 style="color: #856404; margin-bottom: 10px;">⚠️ Avviso Email</h5>
+                        <p style="margin: 0; color: #856404;">{{ email_result.message }}</p>
+                        <small style="color: #856404;">Il report è stato salvato correttamente ma l'invio email ha avuto problemi.</small>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                
                 <div style="text-align: center; margin-top: 25px;">
                     <a href="/" class="btn btn-primary" style="text-decoration: none;">
                         🔄 Genera Nuovo Report

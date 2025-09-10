@@ -1,8 +1,9 @@
-# app.py - VERSIONE COMPLETA CON API
 from flask import Flask, render_template, request, send_file, url_for
 import pandas as pd
 from openpyxl import load_workbook
 from datetime import datetime, timedelta
+from email_service import email_service
+from digil_test_service import digil_test_service
 import os
 import tempfile
 import re
@@ -17,7 +18,23 @@ import urllib.parse
 import zipfile
 from pathlib import Path
 
-app = Flask(__name__)
+# Gestione percorsi per PyInstaller
+if getattr(sys, 'frozen', False):
+    # Se è un exe compilato
+    application_path = sys._MEIPASS
+    running_as_exe = True
+else:
+    # Se è uno script Python normale
+    application_path = os.path.dirname(os.path.abspath(__file__))
+    running_as_exe = False
+
+# Cambia directory di lavoro
+os.chdir(os.path.dirname(sys.executable) if running_as_exe else application_path)
+
+# Configurazione Flask
+app = Flask(__name__, 
+            template_folder=os.path.join(application_path, 'templates'),
+            static_folder=os.path.join(application_path, 'static'))
 
 # Variabili globali per gestire il token
 current_token = None
@@ -326,6 +343,10 @@ def generate_report():
             'device_id': request.form['device_id']
         }
         
+        # Controlla se inviare email
+        send_email = request.form.get('send_email') == 'on'
+        custom_email = request.form.get('custom_email', '').strip()
+        
         # Genera Excel
         wb = create_excel_report(data)
         
@@ -374,40 +395,48 @@ def generate_report():
         
         print(f"✅ Report salvato in: {zip_path}")
         
-        # Ritorna messaggio di successo con template rendering
+        # Invia email se richiesto
+        email_result = None
+        if send_email:
+            print("📧 Tentativo invio email...")
+            
+            try:
+                # Importa il servizio email
+                from email_service import email_service
+                
+                # Se c'è un'email custom, usa quella
+                if custom_email:
+                    custom_recipients = {'to': [custom_email], 'cc': []}
+                    success, message = email_service.send_report_email(
+                        zip_path, data['vendor'], data['device_id'], 
+                        date_formatted, custom_recipients
+                    )
+                else:
+                    success, message = email_service.send_report_email(
+                        zip_path, data['vendor'], data['device_id'], date_formatted
+                    )
+                
+                email_result = {'success': success, 'message': message}
+                print(f"📧 {message}")
+                
+            except Exception as email_error:
+                email_result = {
+                    'success': False, 
+                    'message': f"Errore invio email: {str(email_error)}"
+                }
+                print(f"❌ Errore invio email: {str(email_error)}")
+        
+        # Ritorna messaggio di successo con info email
         return render_template('success.html', 
                              zip_filename=zip_filename,
                              zip_path=str(zip_path),
                              vendor=data['vendor'],
                              device_id=data['device_id'],
-                             date_formatted=date_formatted)
+                             date_formatted=date_formatted,
+                             email_result=email_result)
     
     except Exception as e:
         return render_template('error.html', error_message=str(e))
-    
-    except Exception as e:
-        return f"""
-        <!DOCTYPE html>
-        <html lang="it">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Errore</title>
-            <link rel="stylesheet" href="{url_for('static', filename='style.css')}">
-        </head>
-        <body>
-            <div class="main-container" style="max-width: 600px; margin-top: 50px;">
-                <div class="alert alert-danger" style="margin: 20px;">
-                    <h4>❌ Errore nella generazione del report</h4>
-                    <p>{str(e)}</p>
-                    <div style="text-align: center; margin-top: 20px;">
-                        <a href="/" class="btn btn-primary">🔙 Torna Indietro</a>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
 
 @app.route('/preview', methods=['POST'])
 def preview_report():
@@ -593,6 +622,67 @@ def reset_device():
                              device_id=device_id if 'device_id' in locals() else None,
                              error=str(e),
                              steps_log=steps_log if 'steps_log' in locals() else [])
+    
+
+@app.route('/test_downlink', methods=['POST'])
+def test_downlink():
+    """Esegue test Downlink sul dispositivo"""
+    try:
+        device_id = request.form.get('device_id')
+        
+        if not device_id:
+            return json.dumps({
+                'success': False,
+                'error': 'Device ID non fornito'
+            })
+        
+        # Trasforma Device ID per le API
+        transformed_id = transform_device_id_new(device_id)
+        print(f"🔧 Test Downlink: {device_id} -> {transformed_id}")
+        
+        # Esegui test con ID trasformato
+        results = digil_test_service.run_downlink_test(transformed_id)
+        
+        return json.dumps(results, default=str)
+        
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'error': str(e)
+        })
+    
+@app.route('/test_metrics', methods=['POST'])
+def test_metrics():
+    """Esegue test Metriche in Range"""
+    try:
+        device_id = request.form.get('device_id')
+        num_sensors = int(request.form.get('num_sensors', 6))
+        time_range = int(request.form.get('time_range', 5))
+        ui_location = request.form.get('ui_location', 'Lazio')  # Prende UI dal form
+        
+        if not device_id:
+            return json.dumps({
+                'success': False,
+                'error': 'Device ID non fornito'
+            }), 200, {'Content-Type': 'application/json'}
+        
+        print(f"🔍 Test metriche per device {device_id} con UI {ui_location}")
+        
+        # Esegui test con UI specificata
+        results = digil_test_service.run_metrics_test(
+            device_id, 
+            num_sensors, 
+            ui_location,  # Usa UI dal form
+            time_range
+        )
+        
+        return json.dumps(results, default=str), 200, {'Content-Type': 'application/json'}
+        
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'error': str(e)
+        }), 200, {'Content-Type': 'application/json'}
 
 def open_browser():
     """Apre il browser dopo 1.5 secondi"""

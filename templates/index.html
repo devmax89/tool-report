@@ -79,6 +79,78 @@
                             * La data di fine viene auto-compilata quando inserisci la data di inizio
                         </div>
                     </div>
+
+                    <!-- Sezione Opzioni Invio -->
+                    <div class="form-section">
+                        <h3>📧 Opzioni Invio Email</h3>
+
+                        <div class="form-group">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" id="send_email" name="send_email" style="width: auto;">
+                                <label for="send_email" style="margin: 0; cursor: pointer;">
+                                    Invia report via email dopo la generazione
+                                </label>
+                            </div>
+                        </div>
+
+                        <div id="email_options" style="display: none;">
+                            <div class="alert alert-info" style="margin: 15px 0;">
+                                <small>Il report verrà inviato agli indirizzi configurati per il vendor selezionato.</small>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="custom_email">Email personalizzata (opzionale)</label>
+                                <input type="email" 
+                                       class="form-control" 
+                                       id="custom_email" 
+                                       name="custom_email" 
+                                       placeholder="Lascia vuoto per usare gli indirizzi predefiniti">
+                                <div class="form-text">
+                                    Se specificata, il report verrà inviato SOLO a questa email
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="ui_location">UI Località *</label>
+                        <select class="form-select" id="ui_location" name="ui_location" required>
+                            <option value="">Seleziona...</option>
+                            <option value="Abruzzo Molise">Abruzzo Molise</option>
+                            <option value="Bari">Bari</option>
+                            <option value="Bologna">Bologna</option>
+                            <option value="Brescia">Brescia</option>
+                            <option value="Brindisi">Brindisi</option>
+                            <option value="Brugherio">Brugherio</option>
+                            <option value="Catania">Catania</option>
+                            <option value="Chiuro">Chiuro</option>
+                            <option value="Cislago">Cislago</option>
+                            <option value="Codrongianos">Codrongianos</option>
+                            <option value="Dugale">Dugale</option>
+                            <option value="Feroleto">Feroleto</option>
+                            <option value="Firenze">Firenze</option>
+                            <option value="Frattamaggiore">Frattamaggiore</option>
+                            <option value="Friuli Venezia Giulia">Friuli Venezia Giulia</option>
+                            <option value="Genova">Genova</option>
+                            <option value="Imola">Imola</option>
+                            <option value="Lazio">Lazio</option>
+                            <option value="Lazio Centro Sud">Lazio Centro Sud</option>
+                            <option value="Lazio Nord">Lazio Nord</option>
+                            <option value="Maddaloni">Maddaloni</option>
+                            <option value="Marche">Marche</option>
+                            <option value="Novara">Novara</option>
+                            <option value="Palermo">Palermo</option>
+                            <option value="Parma">Parma</option>
+                            <option value="Pont Saint Martin">Pont Saint Martin</option>
+                            <option value="Rotonda">Rotonda</option>
+                            <option value="Sivizzano">Sivizzano</option>
+                            <option value="Torino">Torino</option>
+                            <option value="Trentino Alto Adige">Trentino Alto Adige</option>
+                            <option value="Villasor">Villasor</option>
+                            <option value="Vittorio Veneto">Vittorio Veneto</option>
+                        </select>
+                        <div class="form-text">Seleziona l'UI dove si trova il dispositivo (necessaria per test metriche)</div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -87,12 +159,23 @@
             <button type="button" class="btn btn-secondary" onclick="showPreview()">
                 👁️ Anteprima
             </button>
+            <button type="button" class="btn btn-info" onclick="runDownlinkTest()">
+                🧪 Test Downlink
+            </button>
+            <button type="button" class="btn btn-success" onclick="runMetricsTest()">
+                📊 Test Metriche
+            </button>
             <button type="submit" form="reportForm" class="btn btn-primary" formaction="/generate">
                 💾 Genera e Salva Report
             </button>
             <a href="/reset" class="btn btn-warning">
                 🔄 Reset Dispositivo
             </a>
+        </div>
+        
+        <!-- Area risultati test -->
+        <div id="testResults" style="display:none; margin: 20px 40px;">
+            <!-- I risultati del test verranno mostrati qui -->
         </div>
         
         <div id="preview" style="display:none;">
@@ -127,12 +210,198 @@
             });
         }
         
+        function runDownlinkTest() {
+            const deviceId = document.getElementById('device_id').value;
+            
+            if (!deviceId) {
+                alert('Inserisci prima il Device ID');
+                return;
+            }
+            
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <h5>🔄 Test Downlink in corso...</h5>
+                    <div class="spinner"></div>
+                    <p>Attendere, il test richiede circa 20-30 secondi</p>
+                </div>
+            `;
+            resultsDiv.style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('device_id', deviceId);
+            
+            fetch('/test_downlink', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                let html = '';
+                if (data.success) {
+                    html = `
+                        <div class="alert alert-success">
+                            <h5>✅ Test Downlink Completato</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Durata:</strong> ${data.duration ? data.duration.toFixed(1) : 'N/A'} secondi</p>
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer; color: #155724;">Mostra dettagli steps</summary>
+                                <ul style="margin-top: 10px; list-style: none; padding-left: 0;">
+                                    ${data.steps ? data.steps.map(s => `
+                                        <li style="padding: 5px 0; border-bottom: 1px solid #c3e6cb;">
+                                            <span style="color: #6c757d; font-size: 0.9em;">${s.timestamp}</span> - 
+                                            <strong>${s.step}:</strong> 
+                                            ${s.success ? 
+                                                '<span style="color: #28a745;">✓</span>' : 
+                                                '<span style="color: #dc3545;">✗</span>'} 
+                                            ${s.message}
+                                        </li>
+                                    `).join('') : '<li>Nessun dettaglio disponibile</li>'}
+                                </ul>
+                            </details>
+                        </div>
+                    `;
+                } else {
+                    html = `
+                        <div class="alert alert-danger">
+                            <h5>❌ Test Downlink Fallito</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Errore:</strong> ${data.error || 'Errore sconosciuto'}</p>
+                            ${data.steps && data.steps.length > 0 ? `
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer; color: #721c24;">Mostra dettagli steps</summary>
+                                    <ul style="margin-top: 10px; list-style: none; padding-left: 0;">
+                                        ${data.steps.map(s => `
+                                            <li style="padding: 5px 0; border-bottom: 1px solid #f5c6cb;">
+                                                <span style="color: #6c757d; font-size: 0.9em;">${s.timestamp}</span> - 
+                                                <strong>${s.step}:</strong> 
+                                                ${s.success ? 
+                                                    '<span style="color: #28a745;">✓</span>' : 
+                                                    '<span style="color: #dc3545;">✗</span>'} 
+                                                ${s.message}
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </details>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                resultsDiv.innerHTML = html;
+            })
+            .catch(error => {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>❌ Errore Test</h5>
+                        <p>${error}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function runMetricsTest() {
+            const deviceId = document.getElementById('device_id').value;
+            const numSensors = document.getElementById('num_sensors').value;
+            const uiLocation = document.getElementById('ui_location').value;
+                
+            if (!deviceId || !numSensors) {
+                alert('Inserisci Device ID e Numero Sensori');
+                return;
+            }
+            
+            // Chiedi il range temporale
+            const timeRange = prompt('Controlla metriche degli ultimi X minuti:', '5');
+            if (!timeRange) return;
+            
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <h5>🔄 Test Metriche in Range in corso...</h5>
+                    <div class="spinner"></div>
+                    <p>Recupero metriche degli ultimi ${timeRange} minuti...</p>
+                    <p>UI: ${uiLocation}</p>
+                </div>
+            `;
+            resultsDiv.style.display = 'block';
+            
+            const formData = new FormData();
+            formData.append('device_id', deviceId);
+            formData.append('num_sensors', numSensors);
+            formData.append('time_range', timeRange);
+            formData.append('ui_location', uiLocation);
+            
+            fetch('/test_metrics', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                let html = '';
+                if (data.success) {
+                    html = `
+                        <div class="alert alert-success">
+                            <h5>✅ Test Metriche Completato - SUPERATO</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Metriche trovate:</strong> ${data.total_found}/${data.total_expected}</p>
+                            <p><strong>Letture totali:</strong> ${data.total_readings || 'N/A'}</p>
+                            <p><strong>Prima lettura:</strong> ${data.first_reading || 'N/A'}</p>
+                            <p><strong>Ultima lettura:</strong> ${data.last_reading || 'N/A'}</p>
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer;">Dettagli metriche</summary>
+                                <div style="margin-top: 10px;">
+                                    ${data.details.map(d => `
+                                        <div style="padding: 3px 0; ${!d.success ? 'color: red;' : ''}">
+                                            ${d.timestamp} - ${d.message}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                } else {
+                    html = `
+                        <div class="alert alert-warning">
+                            <h5>⚠️ Test Metriche - METRICHE MANCANTI</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Metriche trovate:</strong> ${data.total_found}/${data.total_expected}</p>
+                            <p><strong>Metriche mancanti:</strong> ${data.missing_metrics ? data.missing_metrics.join(', ') : 'N/A'}</p>
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer;">Dettagli completi</summary>
+                                <div style="margin-top: 10px;">
+                                    ${data.details ? data.details.map(d => `
+                                        <div style="padding: 3px 0; ${!d.success ? 'color: red;' : ''}">
+                                            ${d.timestamp} - ${d.message}
+                                        </div>
+                                    `).join('') : 'Nessun dettaglio'}
+                                </div>
+                            </details>
+                        </div>
+                    `;
+                }
+                resultsDiv.innerHTML = html;
+            })
+            .catch(error => {
+                resultsDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>❌ Errore Test</h5>
+                        <p>${error}</p>
+                    </div>
+                `;
+            });
+        }
+        
         // Auto-fill end date quando cambia start date
         document.getElementById('start_date').addEventListener('change', function() {
             const endDate = document.getElementById('end_date');
             if (!endDate.value) {
                 endDate.value = this.value;
             }
+        });
+
+        // Toggle email options
+        document.getElementById('send_email').addEventListener('change', function() {
+            const emailOptions = document.getElementById('email_options');
+            emailOptions.style.display = this.checked ? 'block' : 'none';
         });
     </script>
 </body>

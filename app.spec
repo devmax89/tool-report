@@ -1,23 +1,43 @@
 # app.spec
 # -*- mode: python ; coding: utf-8 -*-
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+import sys
 
 block_cipher = None
+
+# Raccogli tutti i submodules di numpy e pandas
+hiddenimports = []
+hiddenimports += collect_submodules('numpy')
+hiddenimports += collect_submodules('pandas')
+hiddenimports += ['email_service', 'dotenv', 'jinja2']  # Aggiungi jinja2
+
+# Raccogli i data files
+datas = []
+datas += collect_data_files('numpy')
+datas += collect_data_files('pandas')
+datas += [
+    ('templates', 'templates'),
+    ('templates_excel', 'templates_excel'),
+    ('static', 'static'),
+    ('email_service.py', '.'),
+    ('config', 'config'),
+]
+
+# Aggiungi .env se esiste
+import os
+if os.path.exists('.env'):
+    datas.append(('.env', '.'))
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('templates', 'templates'),
-        ('templates_excel', 'templates_excel'),
-        ('static', 'static'),
-        ('static/logo', 'static/logo')  # Aggiungi questa linea per il logo
-    ],
-    hiddenimports=[],
+    datas=datas,
+    hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['matplotlib', 'scipy', 'tkinter'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -29,21 +49,27 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='DIGIL_Report_Generator',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
+    upx=False,
     console=True,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=False,
+    upx_exclude=[],
+    name='DIGIL_Report_Generator',
 )

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 0;
+            padding: 0;
+        }
+        .header { 
+            background: #004A93; 
+            color: white; 
+            padding: 20px; 
+            text-align: center; 
+        }
+        .header h2 {
+            margin: 10px 0;
+        }
+        .header img {
+            height: 35px;  /* Ridotto da 40px */
+            width: auto;    /* Mantiene le proporzioni */
+            margin-top: 10px;
+            display: inline-block;
+        }
+        .content { 
+            padding: 20px; 
+        }
+        .details-table { 
+            width: 100%; 
+            border-collapse: collapse; 
+            margin: 20px 0; 
+        }
+        .details-table td { 
+            padding: 10px; 
+            border: 1px solid #ddd; 
+        }
+        .details-table tr:nth-child(odd) { 
+            background: #f5f5f5; 
+        }
+        .disclaimer { 
+            background: #f5f5f5; 
+            padding: 15px; 
+            margin-top: 30px;
+            font-size: 11px; 
+            color: #666;
+            border-top: 2px solid #ddd;
+        }
+        .disclaimer-text {
+            line-height: 1.4;
+            text-align: justify;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>Report Test DIGIL</h2>
+        <img src="https://www.terna.it/assets/images/logo-terna.png" alt="Terna" style="height: 35px; width: auto;">
+    </div>
+    
+    <div class="content">
+        <p>In allegato il report del test DIGIL con i seguenti dettagli:</p>
+        
+        <table class="details-table">
+            <tr>
+                <td width="30%"><strong>Vendor:</strong></td>
+                <td>{{ vendor }}</td>
+            </tr>
+            <tr>
+                <td><strong>Device ID:</strong></td>
+                <td>{{ device_id }}</td>
+            </tr>
+            <tr>
+                <td><strong>Data Test:</strong></td>
+                <td>{{ date_formatted }}</td>
+            </tr>
+            <tr>
+                <td><strong>Data/Ora Invio:</strong></td>
+                <td>{{ send_datetime }}</td>
+            </tr>
+            <tr>
+                <td><strong>Nome File:</strong></td>
+                <td>{{ filename }}</td>
+            </tr>
+        </table>
+        
+        <div class="disclaimer">
+            <div class="disclaimer-text">
+                <strong>Questo messaggio (allegati eventuali compresi) contiene informazioni del Gruppo Terna che devono essere utilizzate esclusivamente dai destinatari in relazione alle finalità per le quali sono state inviate. Vietata qualsiasi forma di divulgazione senza l'esplicito consenso di Terna. Qualora questa e-mail sia stata ricevuta per errore, si prega di provvedere alla distruzione dell'intero messaggio e di informare tempestivamente il mittente. Grazie.</strong>
+                <br><br>
+                <em>This email (and any files transmitted with it) includes Terna Group information and is intended solely for the use of the recipients to whom it is addressed. Please note that disclosing the contents of this email is strictly prohibited without Terna's express consent. Please notify the sender immediately if you have received this e-mail by mistake and delete this e-mail from your system. Thank you.</em>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
