@@ -434,6 +434,209 @@ class DigilTestService:
         results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
         
         return results
+    
+    def get_alarm_definitions(self, num_sensors):
+        """Definisce gli allarmi attesi per numero di sensori"""
+        # Allarmi base comuni a tutte le configurazioni
+        base_alarms = [
+            'EIT_WINDVEL',  # per valori di vento sopra soglia
+            'EIT_HUMIDITY', 
+            'EIT_TEMPERATURE',
+            'EIT_PIROMETER'
+        ]
+
+        if num_sensors == 3:
+            sensor_alarms = [
+                'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+            ]
+        elif num_sensors == 6:
+            sensor_alarms = [
+                'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+            ]
+        else:  # 12 sensori
+            sensor_alarms = [
+                'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                'EGM_OUT_SENS_23_VAR_33',  # F12A_L2
+                'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                'EGM_OUT_SENS_23_VAR_35',  # F12B_L2
+                'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                'EGM_OUT_SENS_23_VAR_37',  # F4A_L2
+                'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                'EGM_OUT_SENS_23_VAR_39',  # F4B_L2
+                'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
+                'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                'EGM_OUT_SENS_23_VAR_43',  # F8B_L2
+            ]
+
+        return base_alarms + sensor_alarms
+
+    def get_lastval_data(self, device_id, ui):
+        """Recupera gli ultimi valori e allarmi dal sistema"""
+        try:
+            # URL per lastval
+            base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
+            url = f"http://{base_url}/api/v1/lastval"
+
+            params = {
+                'ui': ui,
+                'deviceID': device_id
+            }
+
+            headers = {
+                'Accept': 'application/json'
+            }
+
+            print(f"📊 Chiamata API lastval: {url}")
+            print(f"   Parametri: {params}")
+
+            response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+
+            print(f"   Response status: {response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                if 'lastVal' in data:
+                    print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
+                return True, data
+            else:
+                error_msg = f"Errore API: {response.status_code}"
+                if response.text:
+                    error_msg += f" - {response.text[:200]}"
+                return False, error_msg
+
+        except Exception as e:
+            return False, f"Errore recupero lastval: {str(e)}"
+
+    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", progress_callback=None):
+        """Esegue il test Allarme Metriche"""
+        results = {
+            'success': False,
+            'device_id': device_id,
+            'num_sensors': num_sensors,
+            'start_time': datetime.now(),
+            'missing_alarms': [],
+            'found_alarms': [],
+            'alarm_values': {},
+            'details': []
+        }
+    
+        def log_step(message, success=True):
+            results['details'].append({
+                'timestamp': datetime.now().strftime('%H:%M:%S'),
+                'message': message,
+                'success': success
+            })
+            if progress_callback:
+                progress_callback(message, success)
+            print(f"{'✓' if success else '✗'} {message}")
+
+        try:
+            log_step(f"Recupero allarmi per dispositivo {device_id}...")
+            log_step(f"UI: {ui}, Sensori: {num_sensors}")
+
+            # Recupera dati lastval
+            success, lastval_data = self.get_lastval_data(device_id, ui)
+
+            if not success:
+                log_step(f"Errore recupero dati: {lastval_data}", False)
+                results['error'] = lastval_data
+                return results
+
+            # Debug: mostra cosa abbiamo ricevuto
+            if 'lastVal' in lastval_data:
+                log_step(f"Ricevuti {len(lastval_data.get('lastVal', []))} record lastval")
+
+            # Analizza allarmi ricevuti
+            received_alarms = {}
+
+            if 'lastVal' in lastval_data and lastval_data['lastVal']:
+                for entry in lastval_data['lastVal']:
+                    if 'metrics' in entry:
+                        for metric in entry['metrics']:
+                            metric_type = metric.get('metricType', '')
+                            metric_name = metric.get('metricName', '')
+                            metric_val = metric.get('val', '')
+
+                            # Debug
+                            if 'ALARM' in metric_name.upper() or 'EGM_OUT_SENS' in metric_type:
+                                log_step(f"Trovato allarme: {metric_type} = {metric_val}")
+                                received_alarms[metric_type] = metric_val
+
+            # Definisci allarmi attesi basati su numero sensori
+            if num_sensors == 3:
+                expected_sensor_alarms = [
+                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                ]
+            elif num_sensors == 6:
+                expected_sensor_alarms = [
+                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                ]
+            else:  # 12 sensori
+                expected_sensor_alarms = [
+                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                    'EGM_OUT_SENS_23_VAR_33',  # F12A_L2
+                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                    'EGM_OUT_SENS_23_VAR_35',  # F12B_L2
+                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                    'EGM_OUT_SENS_23_VAR_37',  # F4A_L2
+                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                    'EGM_OUT_SENS_23_VAR_39',  # F4B_L2
+                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                    'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
+                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                    'EGM_OUT_SENS_23_VAR_43',  # F8B_L2
+                ]
+
+            # Verifica presenza allarmi
+            missing_alarms = []
+            found_alarms = []
+
+            log_step("=== Verifica Allarmi Sensori ===")
+            for expected in expected_sensor_alarms:
+                if expected in received_alarms:
+                    found_alarms.append(expected)
+                    value = received_alarms[expected]
+                    log_step(f"✓ {expected}: {value}")
+                    results['alarm_values'][expected] = value
+                else:
+                    missing_alarms.append(expected)
+                    log_step(f"✗ {expected}: NON TROVATO", False)
+
+            # Risultati
+            results['found_alarms'] = found_alarms
+            results['missing_alarms'] = missing_alarms
+            results['total_expected'] = len(expected_sensor_alarms)
+            results['total_found'] = len(found_alarms)
+            results['success'] = len(missing_alarms) == 0
+
+            if results['success']:
+                log_step(f"✅ Test superato! Tutti gli allarmi ricevuti ({results['total_found']}/{results['total_expected']})")
+            else:
+                log_step(f"❌ Test fallito! Mancano {len(missing_alarms)} allarmi su {results['total_expected']}", False)
+        
+        except Exception as e:
+            log_step(f"Errore durante il test: {str(e)}", False)
+            results['error'] = str(e)
+        
+        results['end_time'] = datetime.now()
+        results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
+        
+        return results
 
 # Istanza singleton
 digil_test_service = DigilTestService()

@@ -683,6 +683,37 @@ def test_metrics():
             'success': False,
             'error': str(e)
         }), 200, {'Content-Type': 'application/json'}
+    
+@app.route('/test_alarm', methods=['POST'])
+def test_alarm():
+    """Esegue test Allarme Metriche"""
+    try:
+        device_id = request.form.get('device_id')
+        num_sensors = int(request.form.get('num_sensors', 6))
+        ui_location = request.form.get('ui_location', 'Lazio')
+        
+        if not device_id:
+            return json.dumps({
+                'success': False,
+                'error': 'Device ID non fornito'
+            }), 200, {'Content-Type': 'application/json'}
+        
+        print(f"🚨 Test allarmi per device {device_id} con UI {ui_location}")
+        
+        # Esegui test
+        results = digil_test_service.run_alarm_test(
+            device_id, 
+            num_sensors, 
+            ui_location
+        )
+        
+        return json.dumps(results, default=str), 200, {'Content-Type': 'application/json'}
+        
+    except Exception as e:
+        return json.dumps({
+            'success': False,
+            'error': str(e)
+        }), 200, {'Content-Type': 'application/json'}
 
 def open_browser():
     """Apre il browser dopo 1.5 secondi"""
