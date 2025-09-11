@@ -1,0 +1,253 @@
+# monitoring_service.py
+from flask_socketio import SocketIO, emit
+from threading import Thread, Event
+import time
+from datetime import datetime, timedelta
+from digil_test_service import digil_test_service
+
+class AlarmMonitor:
+    def __init__(self, socketio):
+        self.socketio = socketio
+        self.monitoring_threads = {}
+        self.stop_events = {}
+    
+    def start_unified_monitoring(self, sid, device_id, num_sensors, ui, timeout_minutes=10):
+        """Avvia il monitoraggio unificato per metriche e allarmi"""
+        
+        # Crea evento di stop per questo client
+        stop_event = Event()
+        self.stop_events[sid] = stop_event
+        
+        # Avvia thread di monitoraggio unificato
+        thread = Thread(
+            target=self._unified_monitor_loop,
+            args=(sid, device_id, num_sensors, ui, timeout_minutes, stop_event)
+        )
+        thread.daemon = True
+        thread.start()
+        self.monitoring_threads[sid] = thread
+    
+    def start_monitoring(self, sid, device_id, num_sensors, ui, timeout_minutes=10):
+        """Mantieni per compatibilità - ora chiama unified"""
+        self.start_unified_monitoring(sid, device_id, num_sensors, ui, timeout_minutes)
+        
+    def stop_monitoring(self, sid):
+        """Ferma il monitoraggio per una sessione"""
+        if sid in self.stop_events:
+            self.stop_events[sid].set()
+            del self.stop_events[sid]
+        if sid in self.monitoring_threads:
+            del self.monitoring_threads[sid]
+    
+    def _unified_monitor_loop(self, sid, device_id, num_sensors, ui, timeout_minutes, stop_event):
+        """Loop principale di monitoraggio unificato"""
+        start_time = datetime.now()
+        timeout = timedelta(minutes=timeout_minutes)
+        check_interval = 5
+        
+        # Dati per metriche
+        found_metrics = {}
+        expected_metrics = self._get_expected_metrics(num_sensors)
+        
+        # Dati per allarmi
+        found_alarms = {}
+        other_alarms = {}
+        expected_alarms = self._get_expected_alarms(num_sensors)
+        
+        # Storia eventi
+        event_history = []
+        
+        while not stop_event.is_set():
+            current_time = datetime.now()
+            elapsed = current_time - start_time
+            
+            # Controlla timeout
+            if elapsed > timeout:
+                self.socketio.emit('monitoring_timeout', {
+                    'message': f'Timeout raggiunto ({timeout_minutes} minuti)',
+                    'metrics': {
+                        'found': list(found_metrics.keys()),
+                        'missing': [m for m in expected_metrics if m not in found_metrics]
+                    },
+                    'alarms': {
+                        'found': list(found_alarms.keys()),
+                        'missing': [a for a in expected_alarms if a not in found_alarms],
+                        'other': other_alarms
+                    },
+                    'history': event_history
+                }, room=sid)
+                break
+            
+            try:
+                # Calcola range temporale
+                end_timestamp = int(current_time.timestamp())
+                start_timestamp = end_timestamp - 300  # Ultimi 5 minuti
+                
+                # Check 1: Metriche (telemetria)
+                success_tm, tm_data = digil_test_service.get_telemetry_data(
+                    device_id, ui, start_timestamp, end_timestamp
+                )
+                
+                if success_tm and 'tm' in tm_data and tm_data['tm']:
+                    for tm_entry in tm_data['tm']:
+                        if 'metrics' in tm_entry:
+                            for metric in tm_entry['metrics']:
+                                metric_type = metric.get('metricType', '')
+                                metric_val = metric.get('val', '')
+                                
+                                # Se è una metrica attesa e non l'abbiamo già trovata
+                                if metric_type in expected_metrics and metric_type not in found_metrics:
+                                    timestamp = datetime.now().strftime('%H:%M:%S')
+                                    found_metrics[metric_type] = metric_val
+                                    
+                                    metric_entry = {
+                                        'metric_type': metric_type,
+                                        'value': metric_val,
+                                        'timestamp': timestamp,
+                                        'elapsed': str(elapsed).split('.')[0]
+                                    }
+                                    event_history.append(('metric', metric_entry))
+                                    self.socketio.emit('metric_found', metric_entry, room=sid)
+                
+                # Check 2: Allarmi (lastval)
+                success_lv, lastval_data = digil_test_service.get_lastval_data(
+                    device_id, ui, start_timestamp, end_timestamp
+                )
+                
+                if success_lv and 'lastVal' in lastval_data:
+                    for entry in lastval_data.get('lastVal', []):
+                        if 'metrics' in entry:
+                            for metric in entry['metrics']:
+                                metric_type = metric.get('metricType', '')
+                                metric_val = metric.get('val', '')
+                                
+                                # Controlla se è un allarme EGM_OUT_SENS
+                                if 'EGM_OUT_SENS' in metric_type:
+                                    timestamp = datetime.now().strftime('%H:%M:%S')
+                                    
+                                    if metric_type in expected_alarms:
+                                        # Allarme atteso
+                                        if metric_type not in found_alarms:
+                                            found_alarms[metric_type] = metric_val
+                                            
+                                            alarm_entry = {
+                                                'alarm_type': metric_type,
+                                                'value': metric_val,
+                                                'timestamp': timestamp,
+                                                'elapsed': str(elapsed).split('.')[0],
+                                                'is_expected': True
+                                            }
+                                            event_history.append(('alarm', alarm_entry))
+                                            self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                    else:
+                                        # Altro allarme non atteso
+                                        if metric_type not in other_alarms:
+                                            other_alarms[metric_type] = metric_val
+                                            
+                                            other_alarm_entry = {
+                                                'alarm_type': metric_type,
+                                                'value': metric_val,
+                                                'timestamp': timestamp,
+                                                'elapsed': str(elapsed).split('.')[0],
+                                                'is_expected': False
+                                            }
+                                            event_history.append(('other_alarm', other_alarm_entry))
+                                            self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
+                
+                # Invia aggiornamenti di stato
+                missing_metrics = [m for m in expected_metrics if m not in found_metrics]
+                missing_alarms = [a for a in expected_alarms if a not in found_alarms]
+                
+                # Aggiornamento metriche
+                self.socketio.emit('metrics_update', {
+                    'found_count': len(found_metrics),
+                    'total_expected': len(expected_metrics),
+                    'missing_list': missing_metrics,
+                    'last_check': datetime.now().strftime('%H:%M:%S')
+                }, room=sid)
+                
+                # Aggiornamento allarmi
+                self.socketio.emit('alarms_update', {
+                    'found_count': len(found_alarms),
+                    'total_expected': len(expected_alarms),
+                    'missing_list': missing_alarms,
+                    'other_count': len(other_alarms),
+                    'last_check': datetime.now().strftime('%H:%M:%S')
+                }, room=sid)
+                
+                # Se tutto è stato ricevuto
+                if len(found_metrics) == len(expected_metrics) and len(found_alarms) == len(expected_alarms):
+                    self.socketio.emit('monitoring_complete', {
+                        'success': True,
+                        'metrics': {
+                            'total_found': len(found_metrics),
+                            'total_expected': len(expected_metrics)
+                        },
+                        'alarms': {
+                            'total_found': len(found_alarms),
+                            'total_expected': len(expected_alarms),
+                            'other_alarms': other_alarms
+                        },
+                        'duration': str(elapsed).split('.')[0],
+                        'history': event_history
+                    }, room=sid)
+                    break
+                    
+            except Exception as e:
+                self.socketio.emit('monitoring_error', {
+                    'error': str(e)
+                }, room=sid)
+            
+            # Adatta intervallo di polling
+            if elapsed.total_seconds() > 120:
+                check_interval = 10
+            elif elapsed.total_seconds() > 300:
+                check_interval = 15
+                
+            stop_event.wait(check_interval)
+    
+    def _get_expected_metrics(self, num_sensors):
+        """Restituisce le metriche attese in base al numero di sensori"""
+        base_metrics = [
+            'EIT_WINDVEL', 'EIT_WINDDIR1', 'EIT_HUMIDITY',
+            'EIT_TEMPERATURE', 'EIT_PIROMETER'
+        ]
+        
+        if num_sensors == 3:
+            load_metrics = [
+                'EIT_LOAD_04_A_L1', 'EIT_LOAD_08_A_L1', 'EIT_LOAD_12_A_L1'
+            ]
+        elif num_sensors == 6:
+            load_metrics = [
+                'EIT_LOAD_04_A_L1', 'EIT_LOAD_04_B_L1',
+                'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_B_L1',
+                'EIT_LOAD_12_A_L1', 'EIT_LOAD_12_B_L1'
+            ]
+        else:  # 12 sensori
+            load_metrics = []
+            for load in ['04', '08', '12']:
+                for side in ['A', 'B']:
+                    for line in ['L1', 'L2']:
+                        load_metrics.append(f'EIT_LOAD_{load}_{side}_{line}')
+        
+        return base_metrics + load_metrics
+    
+    def _get_expected_alarms(self, num_sensors):
+        """Restituisce gli allarmi attesi in base al numero di sensori"""
+        if num_sensors == 3:
+            return [
+                'EGM_OUT_SENS_23_VAR_32',
+                'EGM_OUT_SENS_23_VAR_36',
+                'EGM_OUT_SENS_23_VAR_40'
+            ]
+        elif num_sensors == 6:
+            return [
+                'EGM_OUT_SENS_23_VAR_32', 'EGM_OUT_SENS_23_VAR_34',
+                'EGM_OUT_SENS_23_VAR_36', 'EGM_OUT_SENS_23_VAR_38',
+                'EGM_OUT_SENS_23_VAR_40', 'EGM_OUT_SENS_23_VAR_42'
+            ]
+        else:  # 12 sensori
+            alarms = []
+            for i in range(32, 44):
+                alarms.append(f'EGM_OUT_SENS_23_VAR_{i}')
+            return alarms

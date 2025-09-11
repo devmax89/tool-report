@@ -4,6 +4,8 @@ from openpyxl import load_workbook
 from datetime import datetime, timedelta
 from email_service import email_service
 from digil_test_service import digil_test_service
+from flask_socketio import SocketIO, emit
+from monitoring_service import AlarmMonitor
 import os
 import tempfile
 import re
@@ -35,6 +37,9 @@ os.chdir(os.path.dirname(sys.executable) if running_as_exe else application_path
 app = Flask(__name__, 
             template_folder=os.path.join(application_path, 'templates'),
             static_folder=os.path.join(application_path, 'static'))
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+alarm_monitor = AlarmMonitor(socketio)
 
 # Variabili globali per gestire il token
 current_token = None
@@ -666,23 +671,70 @@ def test_alarm():
             'error': str(e)
         }), 200, {'Content-Type': 'application/json'}
 
+def get_local_ip():
+    """Ottiene l'IP locale della macchina"""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
+    
+#################### socketio per monitoraggio allarmi ####################
+
+# Aggiungi le route WebSocket
+@socketio.on('connect')
+def handle_connect():
+    print(f'Client connesso: {request.sid}')
+    emit('connected', {'data': 'Connesso al server'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print(f'Client disconnesso: {request.sid}')
+    alarm_monitor.stop_monitoring(request.sid)
+
+@socketio.on('start_unified_monitoring')
+def handle_start_unified_monitoring(data):
+    device_id = data.get('device_id')
+    num_sensors = data.get('num_sensors', 6)
+    ui = data.get('ui', 'Lazio')
+    timeout_minutes = data.get('timeout_minutes', 10)
+    
+    print(f'Avvio monitoraggio unificato per {device_id}')
+    alarm_monitor.start_unified_monitoring(
+        request.sid, device_id, num_sensors, ui, timeout_minutes
+    )
+    emit('monitoring_started', {'message': 'Monitoraggio unificato avviato'})
+
+@socketio.on('stop_monitoring')
+def handle_stop_monitoring():
+    print(f'Stop monitoraggio per {request.sid}')
+    alarm_monitor.stop_monitoring(request.sid)
+    emit('monitoring_stopped', {'message': 'Monitoraggio interrotto'})
+
+# Aggiungi route per la pagina di monitoraggio
+@app.route('/monitoring')
+def monitoring_page():
+    return render_template('monitoring.html')
+
 def open_browser():
     """Apre il browser dopo 1.5 secondi"""
     time.sleep(1.5)
     webbrowser.open('http://localhost:5000')
 
 if __name__ == '__main__':
+    local_ip = get_local_ip() if 'get_local_ip' in locals() else '127.0.0.1'
+    
     if getattr(sys, 'frozen', False):
         threading.Thread(target=open_browser, daemon=True).start()
         print("🚀 DIGIL Report Generator avviato!")
         print("📱 Il browser si aprirà automaticamente...")
         print("🌐 URL locale: http://localhost:5000")
-        print("🌐 URL rete: http://<tuo-ip>:5000")
+        print(f"🌐 URL rete: http://{local_ip}:5000")
         print("❌ Per chiudere: premi Ctrl+C")
-    else:
-        print("🚀 DIGIL Report Generator avviato in modalità sviluppo!")
-        print("🌐 URL locale: http://localhost:5000")
-        print("🌐 URL rete: http://<tuo-ip>:5000")
     
-    # Bind su 0.0.0.0 per accettare connessioni da qualsiasi interfaccia
-    app.run(debug=False, host='0.0.0.0', port=5000)
+    # Usa socketio.run invece di app.run
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000)

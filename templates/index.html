@@ -132,7 +132,7 @@
                             <option value="Frattamaggiore">Frattamaggiore</option>
                             <option value="Friuli Venezia Giulia">Friuli Venezia Giulia</option>
                             <option value="Genova">Genova</option>
-                            <option value="Imola">Imola</option>
+                            <option value="Imola">Gorlago</option>
                             <option value="Lazio">Lazio</option>
                             <option value="Lazio Centro Sud">Lazio Centro Sud</option>
                             <option value="Lazio Nord">Lazio Nord</option>
@@ -143,7 +143,7 @@
                             <option value="Parma">Parma</option>
                             <option value="Pont Saint Martin">Pont Saint Martin</option>
                             <option value="Rotonda">Rotonda</option>
-                            <option value="Sivizzano">Sivizzano</option>
+                            <option value="Sivizzano">Suvereto</option>
                             <option value="Torino">Torino</option>
                             <option value="Trentino Alto Adige">Trentino Alto Adige</option>
                             <option value="Villasor">Villasor</option>
@@ -166,7 +166,7 @@
             <button type="button" class="btn btn-danger" onclick="runAlarmTest()">
                 🚨 Test Allarmi
             </button>
-
+            
             <!-- Seconda riga: Azioni principali -->
             <button type="button" class="btn btn-secondary" onclick="showPreview()">
                 👁️ Anteprima Report
@@ -177,6 +177,15 @@
             <a href="/reset" class="btn btn-warning" style="display: flex; align-items: center; justify-content: center;">
                 🔄 Reset Dispositivo
             </a>
+            
+            <!-- Terza riga: Nuovo bottone centrato -->
+            <div style="grid-column: span 3;">
+                <button type="button" class="btn btn-live" onclick="openLiveMonitoring()" 
+                        style="width: 50%; margin: 0 auto; display: block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    📡 Monitoraggio Live
+                </button>
+            </div>
+
         </div>
         
         <!-- Area risultati test -->
@@ -309,16 +318,16 @@
             const deviceId = document.getElementById('device_id').value;
             const numSensors = document.getElementById('num_sensors').value;
             const uiLocation = document.getElementById('ui_location').value;
-                
+
             if (!deviceId || !numSensors) {
                 alert('Inserisci Device ID e Numero Sensori');
                 return;
             }
-            
+
             // Chiedi il range temporale
             const timeRange = prompt('Controlla metriche degli ultimi X minuti:', '5');
             if (!timeRange) return;
-            
+
             const resultsDiv = document.getElementById('testResults');
             resultsDiv.innerHTML = `
                 <div class="alert alert-info">
@@ -395,35 +404,21 @@
                 `;
             });
         }
-        
-        // Auto-fill end date quando cambia start date
-        document.getElementById('start_date').addEventListener('change', function() {
-            const endDate = document.getElementById('end_date');
-            if (!endDate.value) {
-                endDate.value = this.value;
-            }
-        });
-
-        // Toggle email options
-        document.getElementById('send_email').addEventListener('change', function() {
-            const emailOptions = document.getElementById('email_options');
-            emailOptions.style.display = this.checked ? 'block' : 'none';
-        });
 
         function runAlarmTest() {
             const deviceId = document.getElementById('device_id').value;
             const numSensors = document.getElementById('num_sensors').value;
             const uiLocation = document.getElementById('ui_location').value;
-            
+        
             if (!deviceId || !numSensors || !uiLocation) {
                 alert('Inserisci Device ID, Numero Sensori e UI');
                 return;
             }
-            
-            // Chiedi il range temporale (default 60 minuti per allarmi)
+        
+            // Vai direttamente al test standard
             const timeRange = prompt('Controlla allarmi degli ultimi X minuti:', '60');
             if (!timeRange) return;
-            
+        
             const resultsDiv = document.getElementById('testResults');
             resultsDiv.innerHTML = `
                 <div class="alert alert-info">
@@ -439,67 +434,67 @@
             formData.append('device_id', deviceId);
             formData.append('num_sensors', numSensors);
             formData.append('ui_location', uiLocation);
-            formData.append('time_range', timeRange);  // Aggiungi range temporale
+            formData.append('time_range', timeRange);
             
-                fetch('/test_alarm', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    let html = '';
-                    if (data.success) {
-                        html = `
-                            <div class="alert alert-success">
-                                <h5>✅ Test Allarmi Completato - SUPERATO</h5>
-                                <p><strong>Device:</strong> ${deviceId}</p>
-                                <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                                <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                                ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
-                                    <details style="margin-top: 15px;">
-                                        <summary style="cursor: pointer;">Valori allarmi attesi</summary>
-                                        <ul style="margin-top: 10px;">
-                                            ${Object.entries(data.alarm_values).map(([key, val]) => 
-                                                `<li><strong>${key}:</strong> ${val}</li>`
-                                            ).join('')}
-                                        </ul>
-                                    </details>
-                                ` : ''}
-                                ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
-                                    <details style="margin-top: 15px;">
-                                        <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
-                                        <ul style="margin-top: 10px;">
-                                            ${Object.entries(data.other_alarms).map(([key, val]) => 
-                                                `<li><strong>${key}:</strong> ${val}</li>`
-                                            ).join('')}
-                                        </ul>
-                                    </details>
-                                ` : ''}
-                            </div>
-                        `;
-                    } else {
-                        html = `
-                            <div class="alert alert-warning">
-                                <h5>⚠️ Test Allarmi - ALLARMI MANCANTI</h5>
-                                <p><strong>Device:</strong> ${deviceId}</p>
-                                <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                                <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? data.missing_alarms.join(', ') : 'N/A'}</p>
-                                <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                                ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
-                                    <details style="margin-top: 15px;">
-                                        <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
-                                        <ul style="margin-top: 10px;">
-                                            ${Object.entries(data.other_alarms).map(([key, val]) => 
-                                                `<li><strong>${key}:</strong> ${val}</li>`
-                                            ).join('')}
-                                        </ul>
-                                    </details>
-                                ` : ''}
-                            </div>
-                        `;
-                    }
-                    resultsDiv.innerHTML = html;
-                })
+            fetch('/test_alarm', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                let html = '';
+                if (data.success) {
+                    html = `
+                        <div class="alert alert-success">
+                            <h5>✅ Test Allarmi Completato - SUPERATO</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
+                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">Valori allarmi attesi</summary>
+                                    <ul style="margin-top: 10px;">
+                                        ${Object.entries(data.alarm_values).map(([key, val]) => 
+                                            `<li><strong>${key}:</strong> ${val}</li>`
+                                        ).join('')}
+                                    </ul>
+                                </details>
+                            ` : ''}
+                            ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
+                                    <ul style="margin-top: 10px;">
+                                        ${Object.entries(data.other_alarms).map(([key, val]) => 
+                                            `<li><strong>${key}:</strong> ${val}</li>`
+                                        ).join('')}
+                                    </ul>
+                                </details>
+                            ` : ''}
+                        </div>
+                    `;
+                } else {
+                    html = `
+                        <div class="alert alert-warning">
+                            <h5>⚠️ Test Allarmi - ALLARMI MANCANTI</h5>
+                            <p><strong>Device:</strong> ${deviceId}</p>
+                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
+                            <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? data.missing_alarms.join(', ') : 'N/A'}</p>
+                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
+                                    <ul style="margin-top: 10px;">
+                                        ${Object.entries(data.other_alarms).map(([key, val]) => 
+                                            `<li><strong>${key}:</strong> ${val}</li>`
+                                        ).join('')}
+                                    </ul>
+                                </details>
+                            ` : ''}
+                        </div>
+                    `;
+                }
+                resultsDiv.innerHTML = html;
+            })
             .catch(error => {
                 resultsDiv.innerHTML = `
                     <div class="alert alert-danger">
@@ -509,6 +504,50 @@
                 `;
             });
         }
+
+        function openLiveMonitoring() {
+            const deviceId = document.getElementById('device_id').value;
+            const numSensors = document.getElementById('num_sensors').value;
+            const uiLocation = document.getElementById('ui_location').value;
+
+            if (!deviceId || !numSensors || !uiLocation) {
+                alert('⚠️ Compilare prima i campi:\n\n• Device ID\n• Numero Sensori\n• UI Località');
+                return;
+            }
+
+            // Apri pagina di monitoraggio con parametri
+            const params = new URLSearchParams({
+                device_id: deviceId,
+                num_sensors: numSensors,
+                ui: uiLocation,
+                timeout: 10,
+                mode: 'unified' // Indica modalità unificata per metriche + allarmi
+            });
+
+            window.open(`/monitoring?${params}`, '_blank');
+        }
+
+        // Auto-fill end date quando cambia start date
+        document.getElementById('start_date').addEventListener('change', function() {
+            const endDate = document.getElementById('end_date');
+            if (!endDate.value) {
+                endDate.value = this.value;
+            }
+        });
+
+        // Auto-fill end time quando cambia start time  
+        document.getElementById('start_time').addEventListener('change', function() {
+            const endTime = document.getElementById('end_time');
+            if (!endTime.value) {
+                endTime.value = this.value;
+            }
+        });
+
+        // Toggle email options
+        document.getElementById('send_email').addEventListener('change', function() {
+            const emailOptions = document.getElementById('email_options');
+            emailOptions.style.display = this.checked ? 'block' : 'none';
+        });
     </script>
 </body>
 </html>

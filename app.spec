@@ -5,21 +5,29 @@ import sys
 
 block_cipher = None
 
-# Raccogli tutti i submodules di numpy e pandas
+# Raccogli tutti i submodules necessari
 hiddenimports = []
 hiddenimports += collect_submodules('numpy')
 hiddenimports += collect_submodules('pandas')
-hiddenimports += ['email_service', 'dotenv', 'jinja2']  # Aggiungi jinja2
+hiddenimports += collect_submodules('flask_socketio')
+hiddenimports += collect_submodules('socketio')
+hiddenimports += collect_submodules('engineio')
+hiddenimports += ['email_service', 'monitoring_service', 'digil_test_service', 'dotenv', 'jinja2']
 
 # Raccogli i data files
 datas = []
 datas += collect_data_files('numpy')
 datas += collect_data_files('pandas')
+datas += collect_data_files('flask_socketio')
+datas += collect_data_files('socketio')
+datas += collect_data_files('engineio')
 datas += [
     ('templates', 'templates'),
     ('templates_excel', 'templates_excel'),
     ('static', 'static'),
     ('email_service.py', '.'),
+    ('monitoring_service.py', '.'),
+    ('digil_test_service.py', '.'),
     ('config', 'config'),
 ]
 
