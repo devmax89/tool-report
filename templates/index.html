@@ -441,45 +441,65 @@
             formData.append('ui_location', uiLocation);
             formData.append('time_range', timeRange);  // Aggiungi range temporale
             
-            fetch('/test_alarm', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                let html = '';
-                if (data.success) {
-                    html = `
-                        <div class="alert alert-success">
-                            <h5>✅ Test Allarmi Completato - SUPERATO</h5>
-                            <p><strong>Device:</strong> ${deviceId}</p>
-                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                            ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
-                                <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Valori allarmi rilevati</summary>
-                                    <ul style="margin-top: 10px;">
-                                        ${Object.entries(data.alarm_values).map(([key, val]) => 
-                                            `<li><strong>${key}:</strong> ${val}</li>`
-                                        ).join('')}
-                                    </ul>
-                                </details>
-                            ` : ''}
-                        </div>
-                    `;
-                } else {
-                    html = `
-                        <div class="alert alert-warning">
-                            <h5>⚠️ Test Allarmi - ALLARMI MANCANTI</h5>
-                            <p><strong>Device:</strong> ${deviceId}</p>
-                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? data.missing_alarms.join(', ') : 'N/A'}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                        </div>
-                    `;
-                }
-                resultsDiv.innerHTML = html;
-            })
+                fetch('/test_alarm', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    let html = '';
+                    if (data.success) {
+                        html = `
+                            <div class="alert alert-success">
+                                <h5>✅ Test Allarmi Completato - SUPERATO</h5>
+                                <p><strong>Device:</strong> ${deviceId}</p>
+                                <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
+                                <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                                ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
+                                    <details style="margin-top: 15px;">
+                                        <summary style="cursor: pointer;">Valori allarmi attesi</summary>
+                                        <ul style="margin-top: 10px;">
+                                            ${Object.entries(data.alarm_values).map(([key, val]) => 
+                                                `<li><strong>${key}:</strong> ${val}</li>`
+                                            ).join('')}
+                                        </ul>
+                                    </details>
+                                ` : ''}
+                                ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
+                                    <details style="margin-top: 15px;">
+                                        <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
+                                        <ul style="margin-top: 10px;">
+                                            ${Object.entries(data.other_alarms).map(([key, val]) => 
+                                                `<li><strong>${key}:</strong> ${val}</li>`
+                                            ).join('')}
+                                        </ul>
+                                    </details>
+                                ` : ''}
+                            </div>
+                        `;
+                    } else {
+                        html = `
+                            <div class="alert alert-warning">
+                                <h5>⚠️ Test Allarmi - ALLARMI MANCANTI</h5>
+                                <p><strong>Device:</strong> ${deviceId}</p>
+                                <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
+                                <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? data.missing_alarms.join(', ') : 'N/A'}</p>
+                                <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                                ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
+                                    <details style="margin-top: 15px;">
+                                        <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
+                                        <ul style="margin-top: 10px;">
+                                            ${Object.entries(data.other_alarms).map(([key, val]) => 
+                                                `<li><strong>${key}:</strong> ${val}</li>`
+                                            ).join('')}
+                                        </ul>
+                                    </details>
+                                ` : ''}
+                            </div>
+                        `;
+                    }
+                    resultsDiv.innerHTML = html;
+                })
             .catch(error => {
                 resultsDiv.innerHTML = `
                     <div class="alert alert-danger">

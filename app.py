@@ -672,12 +672,17 @@ def open_browser():
     webbrowser.open('http://localhost:5000')
 
 if __name__ == '__main__':
-    # Se è un exe, apri automaticamente il browser
     if getattr(sys, 'frozen', False):
         threading.Thread(target=open_browser, daemon=True).start()
         print("🚀 DIGIL Report Generator avviato!")
         print("📱 Il browser si aprirà automaticamente...")
-        print("🌐 URL: http://localhost:5000")
+        print("🌐 URL locale: http://localhost:5000")
+        print("🌐 URL rete: http://<tuo-ip>:5000")
         print("❌ Per chiudere: premi Ctrl+C")
+    else:
+        print("🚀 DIGIL Report Generator avviato in modalità sviluppo!")
+        print("🌐 URL locale: http://localhost:5000")
+        print("🌐 URL rete: http://<tuo-ip>:5000")
     
-    app.run(debug=False, port=5000)
+    # Bind su 0.0.0.0 per accettare connessioni da qualsiasi interfaccia
+    app.run(debug=False, host='0.0.0.0', port=5000)

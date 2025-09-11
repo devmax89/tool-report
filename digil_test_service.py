@@ -221,14 +221,14 @@ class DigilTestService:
             return False, f"Errore recupero telemetria: {str(e)}"
     
     def run_downlink_test(self, device_id, progress_callback=None):
-        """Esegue il test completo Downlink"""
+        """Esegue il test completo Downlink - versione ottimizzata"""
         results = {
             'success': False,
             'steps': [],
             'start_time': datetime.now(),
             'device_id': device_id
         }
-
+    
         def log_step(step_name, success, message):
             results['steps'].append({
                 'step': step_name,
@@ -238,14 +238,14 @@ class DigilTestService:
             })
             if progress_callback:
                 progress_callback(step_name, success, message)
-
+    
         # Step 1: Autenticazione
         success, msg = self.get_auth_token()
         log_step("Autenticazione", success, msg)
         if not success:
             results['error'] = msg
             return results
-
+    
         # Step 2: Verifica connessione
         success, status_data = self.check_device_status(device_id)
         if success:
@@ -259,42 +259,58 @@ class DigilTestService:
             log_step("Verifica connessione", False, status_data)
             results['error'] = status_data
             return results
-
+    
         # Step 3: Maintenance ON
         success, msg = self.send_maintenance_command(device_id, "ON")
         log_step("Maintenance ON", success, msg)
         if not success:
             results['error'] = msg
             return results
-
-        time.sleep(3)
-
-        # Step 4: Configurazioni sensori
+    
+        time.sleep(2)  # Ridotto da 3 a 2 secondi
+    
+        # Step 4: Configurazioni sensori IN PARALLELO (più veloce)
+        import concurrent.futures
         sensor_configs = [
             ("accelerometer", "samplingTime", 60),
             ("inclinometer", "thresholdAlarm", 45),
             ("weatherStationAnenometer", "thresholdWarning", 25),
             ("pullSensors", "samplingTime", 120)
         ]
-
+    
         all_configs_success = True
-        for sensor, param, value in sensor_configs:
-            success, msg = self.configure_sensor(device_id, sensor, param, value)
-            log_step(f"Config {sensor}", success, msg)
-            if not success:
-                all_configs_success = False
-            time.sleep(1)
-
+        
+        # Esegui le configurazioni in parallelo per velocizzare
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {}
+            for sensor, param, value in sensor_configs:
+                future = executor.submit(self.configure_sensor, device_id, sensor, param, value)
+                futures[future] = (sensor, param, value)
+            
+            # Raccogli i risultati
+            for future in concurrent.futures.as_completed(futures):
+                sensor, param, value = futures[future]
+                try:
+                    success, msg = future.result(timeout=5)
+                    log_step(f"Config {sensor}", success, msg)
+                    if not success:
+                        all_configs_success = False
+                except Exception as e:
+                    log_step(f"Config {sensor}", False, f"Errore: {str(e)}")
+                    all_configs_success = False
+        
+        time.sleep(1)  # Breve pausa dopo tutte le config
+    
         # Step 5: Maintenance OFF
         success, msg = self.send_maintenance_command(device_id, "OFF")
         log_step("Maintenance OFF", success, msg)
-
-        time.sleep(5)
-
+    
+        time.sleep(3)  # Ridotto da 5 a 3 secondi
+    
         # Step 6: Verifica finale usando /configuration per avere maintenanceMode
         max_retries = 3
         maintenance_off = False
-
+    
         for retry in range(max_retries):
             success, config_data = self.check_device_configuration(device_id)
             if success:
@@ -306,7 +322,7 @@ class DigilTestService:
                 elif retry < max_retries - 1:
                     log_step(f"Verifica {retry+1}/{max_retries}", False, 
                             f"Maintenance ancora {maintenance_status}, riprovo...")
-                    time.sleep(3)
+                    time.sleep(2)  # Ridotto da 3 a 2 secondi
                 else:
                     log_step("Verifica finale", False, f"Maintenance: {maintenance_status}")
             else:
@@ -314,13 +330,13 @@ class DigilTestService:
                 break
             
         results['success'] = all_configs_success and maintenance_off
-
+    
         if results['success']:
             log_step("Test completato", True, "✅ Tutte le configurazioni applicate e maintenance OFF")
-
+    
         results['end_time'] = datetime.now()
         results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
-
+    
         return results
     
     def run_metrics_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=5, progress_callback=None):
@@ -529,6 +545,7 @@ class DigilTestService:
             'start_time': datetime.now(),
             'missing_alarms': [],
             'found_alarms': [],
+            'other_alarms': {},
             'alarm_values': {},
             'details': []
         }
@@ -563,14 +580,14 @@ class DigilTestService:
                 log_step(f"Errore recupero dati: {lastval_data}", False)
                 results['error'] = lastval_data
                 return results
-
+            
             # Debug: mostra cosa abbiamo ricevuto
             if 'lastVal' in lastval_data:
                 log_step(f"Ricevuti {len(lastval_data.get('lastVal', []))} record lastval")
-
+            
             # Analizza allarmi ricevuti
             received_alarms = {}
-
+            
             if 'lastVal' in lastval_data and lastval_data['lastVal']:
                 for entry in lastval_data['lastVal']:
                     if 'metrics' in entry:
@@ -578,12 +595,12 @@ class DigilTestService:
                             metric_type = metric.get('metricType', '')
                             metric_name = metric.get('metricName', '')
                             metric_val = metric.get('val', '')
-
-                            # Debug
+                            
+                            # Debug - raccogli TUTTI gli allarmi
                             if 'ALARM' in metric_name.upper() or 'EGM_OUT_SENS' in metric_type:
                                 log_step(f"Trovato allarme: {metric_type} = {metric_val}")
                                 received_alarms[metric_type] = metric_val
-
+            
             # Definisci allarmi attesi basati su numero sensori
             if num_sensors == 3:
                 expected_sensor_alarms = [
@@ -615,11 +632,17 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
                     'EGM_OUT_SENS_23_VAR_43',  # F8B_L2
                 ]
-
-            # Verifica presenza allarmi
+            
+            # Separa allarmi attesi da altri allarmi
+            other_alarms = {}
+            for alarm_key, alarm_value in received_alarms.items():
+                if alarm_key not in expected_sensor_alarms:
+                    other_alarms[alarm_key] = alarm_value
+            
+            # Verifica presenza allarmi attesi
             missing_alarms = []
             found_alarms = []
-
+            
             log_step("=== Verifica Allarmi Sensori ===")
             for expected in expected_sensor_alarms:
                 if expected in received_alarms:
@@ -630,19 +653,26 @@ class DigilTestService:
                 else:
                     missing_alarms.append(expected)
                     log_step(f"✗ {expected}: NON TROVATO", False)
-
+            
+            # Mostra altri allarmi trovati
+            if other_alarms:
+                log_step("=== Altri Allarmi Trovati ===")
+                for alarm_key, alarm_value in other_alarms.items():
+                    log_step(f"ℹ️ {alarm_key}: {alarm_value}")
+                results['other_alarms'] = other_alarms
+            
             # Risultati
             results['found_alarms'] = found_alarms
             results['missing_alarms'] = missing_alarms
             results['total_expected'] = len(expected_sensor_alarms)
             results['total_found'] = len(found_alarms)
             results['success'] = len(missing_alarms) == 0
-
+            
             if results['success']:
                 log_step(f"✅ Test superato! Tutti gli allarmi ricevuti ({results['total_found']}/{results['total_expected']})")
             else:
                 log_step(f"❌ Test fallito! Mancano {len(missing_alarms)} allarmi su {results['total_expected']}", False)
-        
+            
         except Exception as e:
             log_step(f"Errore durante il test: {str(e)}", False)
             results['error'] = str(e)
