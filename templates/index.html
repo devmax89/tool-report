@@ -414,18 +414,23 @@
             const deviceId = document.getElementById('device_id').value;
             const numSensors = document.getElementById('num_sensors').value;
             const uiLocation = document.getElementById('ui_location').value;
-                
+            
             if (!deviceId || !numSensors || !uiLocation) {
                 alert('Inserisci Device ID, Numero Sensori e UI');
                 return;
             }
+            
+            // Chiedi il range temporale (default 60 minuti per allarmi)
+            const timeRange = prompt('Controlla allarmi degli ultimi X minuti:', '60');
+            if (!timeRange) return;
             
             const resultsDiv = document.getElementById('testResults');
             resultsDiv.innerHTML = `
                 <div class="alert alert-info">
                     <h5>🚨 Test Allarme Metriche in corso...</h5>
                     <div class="spinner"></div>
-                    <p>Verifica allarmi per ${numSensors} sensori...</p>
+                    <p>Recupero allarmi degli ultimi ${timeRange} minuti...</p>
+                    <p>UI: ${uiLocation}</p>
                 </div>
             `;
             resultsDiv.style.display = 'block';
@@ -434,6 +439,7 @@
             formData.append('device_id', deviceId);
             formData.append('num_sensors', numSensors);
             formData.append('ui_location', uiLocation);
+            formData.append('time_range', timeRange);  // Aggiungi range temporale
             
             fetch('/test_alarm', {
                 method: 'POST',
@@ -448,7 +454,8 @@
                             <h5>✅ Test Allarmi Completato - SUPERATO</h5>
                             <p><strong>Device:</strong> ${deviceId}</p>
                             <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            ${data.alarm_values ? `
+                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
                                 <details style="margin-top: 15px;">
                                     <summary style="cursor: pointer;">Valori allarmi rilevati</summary>
                                     <ul style="margin-top: 10px;">
@@ -467,6 +474,7 @@
                             <p><strong>Device:</strong> ${deviceId}</p>
                             <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
                             <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? data.missing_alarms.join(', ') : 'N/A'}</p>
+                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
                         </div>
                     `;
                 }

@@ -478,8 +478,8 @@ class DigilTestService:
 
         return base_alarms + sensor_alarms
 
-    def get_lastval_data(self, device_id, ui):
-        """Recupera gli ultimi valori e allarmi dal sistema"""
+    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
+        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
         try:
             # URL per lastval
             base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
@@ -489,6 +489,11 @@ class DigilTestService:
                 'ui': ui,
                 'deviceID': device_id
             }
+
+            # Aggiungi range temporale se specificato
+            if start_timestamp and end_timestamp:
+                params['startDate'] = str(start_timestamp)
+                params['endDate'] = str(end_timestamp)
 
             headers = {
                 'Accept': 'application/json'
@@ -515,8 +520,8 @@ class DigilTestService:
         except Exception as e:
             return False, f"Errore recupero lastval: {str(e)}"
 
-    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", progress_callback=None):
-        """Esegue il test Allarme Metriche"""
+    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=60, progress_callback=None):
+        """Esegue il test Allarme Metriche con range temporale"""
         results = {
             'success': False,
             'device_id': device_id,
@@ -527,7 +532,7 @@ class DigilTestService:
             'alarm_values': {},
             'details': []
         }
-    
+        
         def log_step(message, success=True):
             results['details'].append({
                 'timestamp': datetime.now().strftime('%H:%M:%S'),
@@ -537,14 +542,23 @@ class DigilTestService:
             if progress_callback:
                 progress_callback(message, success)
             print(f"{'✓' if success else '✗'} {message}")
-
+        
         try:
-            log_step(f"Recupero allarmi per dispositivo {device_id}...")
+            # Calcola timestamp per il range temporale
+            end_time = datetime.now()
+            start_time = end_time - timedelta(minutes=time_range_minutes)
+            
+            # Converti in Unix timestamp in SECONDI
+            start_timestamp = int(start_time.timestamp())
+            end_timestamp = int(end_time.timestamp())
+            
+            log_step(f"Recupero allarmi ultimi {time_range_minutes} minuti...")
+            log_step(f"Periodo: {start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}")
             log_step(f"UI: {ui}, Sensori: {num_sensors}")
-
-            # Recupera dati lastval
-            success, lastval_data = self.get_lastval_data(device_id, ui)
-
+            
+            # Recupera dati lastval con range temporale
+            success, lastval_data = self.get_lastval_data(device_id, ui, start_timestamp, end_timestamp)
+            
             if not success:
                 log_step(f"Errore recupero dati: {lastval_data}", False)
                 results['error'] = lastval_data

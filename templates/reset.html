@@ -37,7 +37,7 @@
                                id="device_id" 
                                name="device_id" 
                                placeholder="es. 1:1:2:15:21:DIGIL_IND_0899"
-                               pattern="[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-9]+:DIGIL_[A-Z]+_[0-9]+"
+                               pattern="[0-9]+:[0-9]+:[0-9]+:[0-9]+:[0-9]+:DIGIL_[A-Z0-9]+_[0-9]+"
                                title="Formato: 1:1:2:15:21:DIGIL_XXX_0000"
                                required>
                         <div class="form-text">
@@ -46,13 +46,11 @@
                     </div>
                     
                     <div class="alert alert-info">
-                        <h6>📋 Il processo di reset eseguirà:</h6>
-                        <ol style="margin: 10px 0 0 20px;">
-                            <li>Recupero configurazione attuale del dispositivo</li>
-                            <li>Cancellazione dal sistema di testing</li>
-                            <li>Reset dei parametri di test</li>
-                            <li>Reinserimento nel sistema come DISPONIBILE</li>
-                        </ol>
+                        <h6>📋 Il processo di reset:</h6>
+                        <p style="margin: 10px 0;">
+                            Eseguirà un reset completo del dispositivo, riportandolo allo stato <strong>DISPONIBILE</strong> 
+                            e cancellando tutti i test in corso o interrotti.
+                        </p>
                     </div>
                     
                     <div class="alert alert-warning" style="margin-top: 20px;">
@@ -82,8 +80,8 @@
                 return false;
             }
             
-            // Verifica formato base
-            const pattern = /^\d+:\d+:\d+:\d+:\d+:DIGIL_[A-Z]+_\d+$/;
+            // Verifica formato base - aggiornato per accettare SR2 e altri pattern
+            const pattern = /^\d+:\d+:\d+:\d+:\d+:DIGIL_[A-Z0-9]+_\d+$/;
             if (!pattern.test(deviceId)) {
                 alert('Formato Client ID non valido.\nUsa il formato: 1:1:2:15:21:DIGIL_XXX_0000');
                 return false;
