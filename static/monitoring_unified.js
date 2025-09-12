@@ -17,7 +17,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const deviceId = urlParams.get('device_id');
 const numSensors = parseInt(urlParams.get('num_sensors') || '6');
 const ui = urlParams.get('ui') || 'Lazio';
-const timeout = parseInt(urlParams.get('timeout') || '10');
+const timeout = parseInt(urlParams.get('timeout') || '60');
 
 // Inizializza connessione WebSocket
 function initSocket() {
