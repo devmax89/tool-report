@@ -90,28 +90,35 @@ function initSocket() {
 }
 
 function setExpectedItems() {
-    // Imposta metriche attese
-    expectedMetrics = [
+    // Imposta metriche attese per categoria
+    const weatherMetrics = [
         'EIT_WINDVEL', 'EIT_WINDDIR1', 'EIT_HUMIDITY', 
         'EIT_TEMPERATURE', 'EIT_PIROMETER'
     ];
     
+    const junctionBoxMetrics = [
+        'EIT_ACCEL_X', 'EIT_ACCEL_Y', 'EIT_ACCEL_Z',
+        'EIT_INCLIN_X', 'EIT_INCLIN_Y'
+    ];
+    
+    let loadMetrics = [];
+    
     if (numSensors === 3) {
-        expectedMetrics.push('EIT_LOAD_04_A_L1', 'EIT_LOAD_08_A_L1', 'EIT_LOAD_12_A_L1');
+        loadMetrics = ['EIT_LOAD_04_A_L1', 'EIT_LOAD_08_A_L1', 'EIT_LOAD_12_A_L1'];
         expectedAlarms = ['VAR_32', 'VAR_36', 'VAR_40'];
     } else if (numSensors === 6) {
-        expectedMetrics.push(
+        loadMetrics = [
             'EIT_LOAD_04_A_L1', 'EIT_LOAD_04_B_L1',
             'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_B_L1',
             'EIT_LOAD_12_A_L1', 'EIT_LOAD_12_B_L1'
-        );
+        ];
         expectedAlarms = ['VAR_32', 'VAR_34', 'VAR_36', 'VAR_38', 'VAR_40', 'VAR_42'];
     } else {
         // 12 sensori
         for (let load of ['04', '08', '12']) {
             for (let side of ['A', 'B']) {
                 for (let line of ['L1', 'L2']) {
-                    expectedMetrics.push(`EIT_LOAD_${load}_${side}_${line}`);
+                    loadMetrics.push(`EIT_LOAD_${load}_${side}_${line}`);
                 }
             }
         }
@@ -121,6 +128,16 @@ function setExpectedItems() {
             'VAR_40', 'VAR_41', 'VAR_42', 'VAR_43'
         ];
     }
+    
+    // Combina tutte le metriche
+    expectedMetrics = [...weatherMetrics, ...junctionBoxMetrics, ...loadMetrics];
+    
+    // Salva le categorie per uso futuro
+    window.metricCategories = {
+        weather: weatherMetrics,
+        junctionBox: junctionBoxMetrics,
+        load: loadMetrics
+    };
     
     // Inizializza liste in attesa
     updateWaitingMetrics(expectedMetrics);
@@ -181,8 +198,21 @@ function addFoundMetric(data) {
     const foundDiv = document.getElementById('foundMetrics');
     const itemDiv = document.createElement('div');
     itemDiv.className = 'item found';
+    
+    // Determina la categoria della metrica
+    let category = '📊';
+    if (window.metricCategories) {
+        if (window.metricCategories.weather.includes(data.metric_type)) {
+            category = '🌤️'; // Centralina Meteo
+        } else if (window.metricCategories.junctionBox.includes(data.metric_type)) {
+            category = '📦'; // Smart Junction Box
+        } else if (window.metricCategories.load.includes(data.metric_type)) {
+            category = '⚡'; // Sensori di Tiro
+        }
+    }
+    
     itemDiv.innerHTML = `
-        <strong>${data.metric_type}</strong><br>
+        <strong>${category} ${data.metric_type}</strong><br>
         📍 ${data.timestamp} - Valore: ${data.value}
     `;
     foundDiv.appendChild(itemDiv);

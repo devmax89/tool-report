@@ -145,15 +145,27 @@ class DigilTestService:
             return False, f"Errore: {str(e)}"
     
     def get_metric_definitions(self, num_sensors):
-        """Definisce le metriche attese per numero di sensori"""
-        base_metrics = [
-            'EIT_WINDVEL',  # min, avg, max
-            'EIT_WINDDIR1',  # val
-            'EIT_HUMIDITY',  # val
-            'EIT_TEMPERATURE',  # val
-            'EIT_PIROMETER',  # val
+        """Definisce le metriche attese per numero di sensori, organizzate per categoria"""
+
+        # Centralina Meteo (Weather Station)
+        weather_metrics = [
+            'EIT_WINDVEL',      # min, avg, max
+            'EIT_WINDDIR1',     # value
+            'EIT_HUMIDITY',     # value
+            'EIT_TEMPERATURE',  # value
+            'EIT_PIROMETER',    # value
         ]
-        
+
+        # Smart Junction Box (Accelerometri e Inclinometri)
+        junction_box_metrics = [
+            'EIT_ACCEL_X',      # min, avg, max
+            'EIT_ACCEL_Y',      # min, avg, max
+            'EIT_ACCEL_Z',      # min, avg, max
+            'EIT_INCLIN_X',     # min, avg, max
+            'EIT_INCLIN_Y',     # min, avg, max
+        ]
+
+        # Sensori di Tiro (basati sul numero di sensori)
         if num_sensors == 3:
             load_metrics = [
                 'EIT_LOAD_04_A_L1',  # min, avg, max
@@ -172,8 +184,17 @@ class DigilTestService:
                 'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_A_L2', 'EIT_LOAD_08_B_L1', 'EIT_LOAD_08_B_L2',
                 'EIT_LOAD_12_A_L1', 'EIT_LOAD_12_A_L2', 'EIT_LOAD_12_B_L1', 'EIT_LOAD_12_B_L2',
             ]
-        
-        return base_metrics + load_metrics
+
+        # Combina tutte le metriche
+        all_metrics = weather_metrics + junction_box_metrics + load_metrics
+
+        # Restituisci sia la lista completa che le categorie (per uso futuro)
+        return {
+            'all': all_metrics,
+            'weather': weather_metrics,
+            'junction_box': junction_box_metrics,
+            'load': load_metrics
+        }
  
     def get_telemetry_data(self, device_id, ui, start_timestamp, end_timestamp):
         """Recupera i dati di telemetria dal sistema"""
@@ -348,6 +369,11 @@ class DigilTestService:
             'start_time': datetime.now(),
             'missing_metrics': [],
             'found_metrics': [],
+            'metrics_by_category': {
+                'weather': {'found': [], 'missing': []},
+                'junction_box': {'found': [], 'missing': []},
+                'load': {'found': [], 'missing': []}
+            },
             'details': []
         }
         
@@ -366,9 +392,8 @@ class DigilTestService:
             end_time = datetime.now()
             start_time = end_time - timedelta(minutes=time_range_minutes)
             
-            # Converti in Unix timestamp in SECONDI (non millisecondi!)
-            start_timestamp = int(start_time.timestamp())  # Rimuovi * 1000
-            end_timestamp = int(end_time.timestamp())      # Rimuovi * 1000
+            start_timestamp = int(start_time.timestamp())
+            end_timestamp = int(end_time.timestamp())
             
             log_step(f"Recupero metriche ultimi {time_range_minutes} minuti...")
             log_step(f"Periodo: {start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}")
@@ -407,23 +432,55 @@ class DigilTestService:
             else:
                 log_step("Nessuna lettura trovata nel periodo", False)
             
-            # Verifica metriche attese
-            expected_metrics = self.get_metric_definitions(num_sensors)
+            # Ottieni definizioni metriche con categorie
+            metrics_def = self.get_metric_definitions(num_sensors)
+            expected_metrics = metrics_def['all'] if isinstance(metrics_def, dict) else metrics_def
+            
+            # Se abbiamo le categorie, mostra i risultati per categoria
+            if isinstance(metrics_def, dict):
+                log_step("=== Centralina Meteo ===")
+                for metric in metrics_def['weather']:
+                    if metric in received_metrics:
+                        results['metrics_by_category']['weather']['found'].append(metric)
+                        if metric in metric_values and metric_values[metric]:
+                            latest = metric_values[metric][-1]
+                            log_step(f"✓ {metric}: {latest['value']}")
+                    else:
+                        results['metrics_by_category']['weather']['missing'].append(metric)
+                        log_step(f"✗ {metric}: NON RICEVUTA", False)
+                
+                log_step("=== Smart Junction Box ===")
+                for metric in metrics_def['junction_box']:
+                    if metric in received_metrics:
+                        results['metrics_by_category']['junction_box']['found'].append(metric)
+                        if metric in metric_values and metric_values[metric]:
+                            latest = metric_values[metric][-1]
+                            log_step(f"✓ {metric}: {latest['value']}")
+                    else:
+                        results['metrics_by_category']['junction_box']['missing'].append(metric)
+                        log_step(f"✗ {metric}: NON RICEVUTA", False)
+                
+                log_step("=== Sensori di Tiro ===")
+                for metric in metrics_def['load']:
+                    if metric in received_metrics:
+                        results['metrics_by_category']['load']['found'].append(metric)
+                        if metric in metric_values and metric_values[metric]:
+                            latest = metric_values[metric][-1]
+                            log_step(f"✓ {metric}: {latest['value']}")
+                    else:
+                        results['metrics_by_category']['load']['missing'].append(metric)
+                        log_step(f"✗ {metric}: NON RICEVUTA", False)
+            
+            # Calcola totali
             missing_metrics = []
             found_metrics = []
             
             for expected in expected_metrics:
                 if expected in received_metrics:
                     found_metrics.append(expected)
-                    values = metric_values.get(expected, [])
-                    if values:
-                        latest = values[-1]
-                        log_step(f"✓ {expected}: {latest['value']}")
                 else:
                     missing_metrics.append(expected)
-                    log_step(f"✗ {expected}: NON RICEVUTA", False)
             
-            # Risultati
             results['found_metrics'] = found_metrics
             results['missing_metrics'] = missing_metrics
             results['total_expected'] = len(expected_metrics)

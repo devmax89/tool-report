@@ -207,12 +207,21 @@ class AlarmMonitor:
             stop_event.wait(check_interval)
     
     def _get_expected_metrics(self, num_sensors):
-        """Restituisce le metriche attese in base al numero di sensori"""
-        base_metrics = [
+        """Restituisce le metriche attese organizzate per categoria"""
+
+        # Centralina Meteo
+        weather_metrics = [
             'EIT_WINDVEL', 'EIT_WINDDIR1', 'EIT_HUMIDITY',
             'EIT_TEMPERATURE', 'EIT_PIROMETER'
         ]
-        
+
+        # Smart Junction Box
+        junction_box_metrics = [
+            'EIT_ACCEL_X', 'EIT_ACCEL_Y', 'EIT_ACCEL_Z',
+            'EIT_INCLIN_X', 'EIT_INCLIN_Y'
+        ]
+
+        # Sensori di Tiro
         if num_sensors == 3:
             load_metrics = [
                 'EIT_LOAD_04_A_L1', 'EIT_LOAD_08_A_L1', 'EIT_LOAD_12_A_L1'
@@ -229,8 +238,8 @@ class AlarmMonitor:
                 for side in ['A', 'B']:
                     for line in ['L1', 'L2']:
                         load_metrics.append(f'EIT_LOAD_{load}_{side}_{line}')
-        
-        return base_metrics + load_metrics
+    
+        return weather_metrics + junction_box_metrics + load_metrics
     
     def _get_expected_alarms(self, num_sensors):
         """Restituisce gli allarmi attesi in base al numero di sensori"""
