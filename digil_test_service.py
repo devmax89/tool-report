@@ -167,16 +167,25 @@ class DigilTestService:
 
         # Sensori di Tiro (basati sul numero di sensori)
         if num_sensors == 3:
-            load_metrics = [
+            # Per 3 sensori, prepara entrambe le possibilità
+            load_metrics_A = [
                 'EIT_LOAD_04_A_L1',  # min, avg, max
                 'EIT_LOAD_08_A_L1',  # min, avg, max
                 'EIT_LOAD_12_A_L1',  # min, avg, max
             ]
+            load_metrics_B = [
+                'EIT_LOAD_04_B_L1',  # min, avg, max
+                'EIT_LOAD_08_B_L1',  # min, avg, max
+                'EIT_LOAD_12_B_L1',  # min, avg, max
+            ]
+            # Usa lato A come default, ma restituisci anche le alternative
+            load_metrics = load_metrics_A
+
         elif num_sensors == 6:
             load_metrics = [
                 'EIT_LOAD_04_A_L1', 'EIT_LOAD_04_B_L1',
-                'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_B_L1', 
-                'EIT_LOAD_12_A_L1', 'EIT_LOAD_12_B_L1',
+                'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_B_L1',
+                'EIT_LOAD_12_A_L1', 'EIT_LOAD_12_B_L1'
             ]
         else:  # 12 sensori
             load_metrics = [
@@ -188,13 +197,20 @@ class DigilTestService:
         # Combina tutte le metriche
         all_metrics = weather_metrics + junction_box_metrics + load_metrics
 
-        # Restituisci sia la lista completa che le categorie (per uso futuro)
-        return {
+        # Restituisci con informazioni aggiuntive per 3 sensori
+        result = {
             'all': all_metrics,
             'weather': weather_metrics,
             'junction_box': junction_box_metrics,
             'load': load_metrics
         }
+
+        # Per 3 sensori, aggiungi le alternative
+        if num_sensors == 3:
+            result['load_alternative'] = load_metrics_B
+            result['flexible'] = True
+
+        return result
  
     def get_telemetry_data(self, device_id, ui, start_timestamp, end_timestamp):
         """Recupera i dati di telemetria dal sistema"""
@@ -240,6 +256,49 @@ class DigilTestService:
                 
         except Exception as e:
             return False, f"Errore recupero telemetria: {str(e)}"
+    
+
+    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
+        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
+        try:
+            # URL per lastval
+            base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
+            url = f"http://{base_url}/api/v1/lastval"
+
+            params = {
+                'ui': ui,
+                'deviceID': device_id
+            }
+
+            # Aggiungi range temporale se specificato
+            if start_timestamp and end_timestamp:
+                params['startDate'] = str(start_timestamp)
+                params['endDate'] = str(end_timestamp)
+
+            headers = {
+                'Accept': 'application/json'
+            }
+
+            print(f"📊 Chiamata API lastval: {url}")
+            print(f"   Parametri: {params}")
+
+            response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+
+            print(f"   Response status: {response.status_code}")
+
+            if response.status_code == 200:
+                data = response.json()
+                if 'lastVal' in data:
+                    print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
+                return True, data
+            else:
+                error_msg = f"Errore API: {response.status_code}"
+                if response.text:
+                    error_msg += f" - {response.text[:200]}"
+                return False, error_msg
+
+        except Exception as e:
+            return False, f"Errore recupero lastval: {str(e)}"
     
     def run_downlink_test(self, device_id, progress_callback=None):
         """Esegue il test completo Downlink - versione ottimizzata"""
@@ -509,23 +568,48 @@ class DigilTestService:
         return results
     
     def get_alarm_definitions(self, num_sensors):
-        """Definisce gli allarmi attesi per numero di sensori"""
-        # Allarmi base comuni a tutte le configurazioni
-        base_alarms = [
-            'EIT_WINDVEL',  # per valori di vento sopra soglia
-            'EIT_HUMIDITY', 
-            'EIT_TEMPERATURE',
-            'EIT_PIROMETER'
-        ]
+        """Definisce gli allarmi attesi per numero di sensori con flessibilità"""
 
+        # Mappa completa degli allarmi possibili
+        alarm_mapping = {
+            # Fase 12
+            'EGM_OUT_SENS_23_VAR_32': 'F12A_L1',
+            'EGM_OUT_SENS_23_VAR_33': 'F12A_L2',
+            'EGM_OUT_SENS_23_VAR_34': 'F12B_L1',
+            'EGM_OUT_SENS_23_VAR_35': 'F12B_L2',
+            # Fase 4
+            'EGM_OUT_SENS_23_VAR_36': 'F4A_L1',
+            'EGM_OUT_SENS_23_VAR_37': 'F4A_L2',
+            'EGM_OUT_SENS_23_VAR_38': 'F4B_L1',
+            'EGM_OUT_SENS_23_VAR_39': 'F4B_L2',
+            # Fase 8
+            'EGM_OUT_SENS_23_VAR_40': 'F8A_L1',
+            'EGM_OUT_SENS_23_VAR_41': 'F8A_L2',
+            'EGM_OUT_SENS_23_VAR_42': 'F8B_L1',
+            'EGM_OUT_SENS_23_VAR_43': 'F8B_L2',
+            # Inclinometri
+            'EGM_OUT_SENS_23_VAR_30': 'Inc_X',
+            'EGM_OUT_SENS_23_VAR_31': 'Inc_Y'
+        }
+
+        # Definizione teorica per configurazione
         if num_sensors == 3:
-            sensor_alarms = [
+            # Solo lato A o B, linea 1
+            expected_base = [
                 'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                 'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
                 'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
             ]
+            # Potrebbe anche essere lato B
+            alternative = [
+                'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+            ]
+            
         elif num_sensors == 6:
-            sensor_alarms = [
+            # Per 6 sensori: 6 allarmi base (3 lato A + 3 lato B)
+            expected_base = [
                 'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                 'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
                 'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
@@ -533,80 +617,86 @@ class DigilTestService:
                 'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
                 'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
             ]
-        else:  # 12 sensori
-            sensor_alarms = [
-                'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+            # Possibili aggiunte L2
+            possible_additions = [
                 'EGM_OUT_SENS_23_VAR_33',  # F12A_L2
-                'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
-                'EGM_OUT_SENS_23_VAR_35',  # F12B_L2
-                'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
                 'EGM_OUT_SENS_23_VAR_37',  # F4A_L2
-                'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
-                'EGM_OUT_SENS_23_VAR_39',  # F4B_L2
-                'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
                 'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
-                'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                'EGM_OUT_SENS_23_VAR_35',  # F12B_L2
+                'EGM_OUT_SENS_23_VAR_39',  # F4B_L2
                 'EGM_OUT_SENS_23_VAR_43',  # F8B_L2
             ]
+            
+        else:  # 12 sensori
+            # Tutti gli allarmi possibili (esclusi inclinometri)
+            expected_base = list(alarm_mapping.keys())[:12]
+        
+        result = {
+            'expected': expected_base,
+            'mapping': alarm_mapping,
+            'flexible': num_sensors in [3, 6]
+        }
+        
+        if num_sensors == 3:
+            result['alternative'] = alternative
+        elif num_sensors == 6:
+            result['possible_additions'] = possible_additions
+        
+        return result
 
-        return base_alarms + sensor_alarms
 
-    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
-        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
-        try:
-            # URL per lastval
-            base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
-            url = f"http://{base_url}/api/v1/lastval"
+        def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
+            """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
+            try:
+                base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
+                url = f"http://{base_url}/api/v1/lastval"
 
-            params = {
-                'ui': ui,
-                'deviceID': device_id
-            }
+                params = {
+                    'ui': ui,
+                    'deviceID': device_id
+                }
 
-            # Aggiungi range temporale se specificato
-            if start_timestamp and end_timestamp:
-                params['startDate'] = str(start_timestamp)
-                params['endDate'] = str(end_timestamp)
+                if start_timestamp and end_timestamp:
+                    params['startDate'] = str(start_timestamp)
+                    params['endDate'] = str(end_timestamp)
 
-            headers = {
-                'Accept': 'application/json'
-            }
+                headers = {
+                    'Accept': 'application/json'
+                }
 
-            print(f"📊 Chiamata API lastval: {url}")
-            print(f"   Parametri: {params}")
+                response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
 
-            response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+                if response.status_code == 200:
+                    data = response.json()
+                    if 'lastVal' in data:
+                        print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
+                    return True, data
+                else:
+                    error_msg = f"Errore API: {response.status_code}"
+                    if response.text:
+                        error_msg += f" - {response.text[:200]}"
+                    return False, error_msg
 
-            print(f"   Response status: {response.status_code}")
+            except Exception as e:
+                return False, f"Errore recupero lastval: {str(e)}"
 
-            if response.status_code == 200:
-                data = response.json()
-                if 'lastVal' in data:
-                    print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
-                return True, data
-            else:
-                error_msg = f"Errore API: {response.status_code}"
-                if response.text:
-                    error_msg += f" - {response.text[:200]}"
-                return False, error_msg
-
-        except Exception as e:
-            return False, f"Errore recupero lastval: {str(e)}"
-
-    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=60, progress_callback=None):
-        """Esegue il test Allarme Metriche con range temporale"""
+    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=120, progress_callback=None):
+        """Esegue il test Allarme Metriche con logica flessibile"""
         results = {
             'success': False,
             'device_id': device_id,
             'num_sensors': num_sensors,
             'start_time': datetime.now(),
-            'missing_alarms': [],
             'found_alarms': [],
+            'expected_alarms': [],
+            'missing_alarms': [],
             'other_alarms': {},
             'alarm_values': {},
-            'details': []
+            'details': [],
+            'total_found': 0,
+            'total_expected': 0
         }
-        
+
         def log_step(message, success=True):
             results['details'].append({
                 'timestamp': datetime.now().strftime('%H:%M:%S'),
@@ -616,57 +706,94 @@ class DigilTestService:
             if progress_callback:
                 progress_callback(message, success)
             print(f"{'✓' if success else '✗'} {message}")
-        
+
         try:
             # Calcola timestamp per il range temporale
             end_time = datetime.now()
             start_time = end_time - timedelta(minutes=time_range_minutes)
-            
-            # Converti in Unix timestamp in SECONDI
+
             start_timestamp = int(start_time.timestamp())
             end_timestamp = int(end_time.timestamp())
-            
+
             log_step(f"Recupero allarmi ultimi {time_range_minutes} minuti...")
             log_step(f"Periodo: {start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}")
             log_step(f"UI: {ui}, Sensori: {num_sensors}")
-            
-            # Recupera dati lastval con range temporale
+
+            # Recupera dati lastval
             success, lastval_data = self.get_lastval_data(device_id, ui, start_timestamp, end_timestamp)
-            
+
             if not success:
                 log_step(f"Errore recupero dati: {lastval_data}", False)
                 results['error'] = lastval_data
+                # Imposta valori prima del return
+                results['total_expected'] = 0
+                results['total_found'] = 0
                 return results
-            
-            # Debug: mostra cosa abbiamo ricevuto
+
             if 'lastVal' in lastval_data:
                 log_step(f"Ricevuti {len(lastval_data.get('lastVal', []))} record lastval")
-            
-            # Analizza allarmi ricevuti
+
+            # Mappa completa degli allarmi con descrizioni
+            alarm_mapping = {
+                'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
+                'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
+                'EGM_OUT_SENS_23_VAR_34': 'TC_F12B_L1',
+                'EGM_OUT_SENS_23_VAR_35': 'TC_F12B_L2',
+                'EGM_OUT_SENS_23_VAR_36': 'TC_F4A_L1',
+                'EGM_OUT_SENS_23_VAR_37': 'TC_F4A_L2',
+                'EGM_OUT_SENS_23_VAR_38': 'TC_F4B_L1',
+                'EGM_OUT_SENS_23_VAR_39': 'TC_F4B_L2',
+                'EGM_OUT_SENS_23_VAR_40': 'TC_F8A_L1',
+                'EGM_OUT_SENS_23_VAR_41': 'TC_F8A_L2',
+                'EGM_OUT_SENS_23_VAR_42': 'TC_F8B_L1',
+                'EGM_OUT_SENS_23_VAR_43': 'TC_F8B_L2',
+                'EGM_OUT_SENS_23_VAR_30': 'Inc_X_ALARM',
+                'EGM_OUT_SENS_23_VAR_31': 'Inc_Y_ALARM'
+            }
+
+            # Raccogli tutti gli allarmi ricevuti
             received_alarms = {}
-            
+
             if 'lastVal' in lastval_data and lastval_data['lastVal']:
                 for entry in lastval_data['lastVal']:
                     if 'metrics' in entry:
                         for metric in entry['metrics']:
                             metric_type = metric.get('metricType', '')
-                            metric_name = metric.get('metricName', '')
                             metric_val = metric.get('val', '')
-                            
-                            # Debug - raccogli TUTTI gli allarmi
-                            if 'ALARM' in metric_name.upper() or 'EGM_OUT_SENS' in metric_type:
-                                log_step(f"Trovato allarme: {metric_type} = {metric_val}")
+
+                            if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
                                 received_alarms[metric_type] = metric_val
-            
-            # Definisci allarmi attesi basati su numero sensori
+
+            # Definisci allarmi attesi base (minimo richiesto)
+            required_alarms = []
+
             if num_sensors == 3:
-                expected_sensor_alarms = [
+                # Per 3 sensori potrebbe essere lato A o lato B
+                required_alarms_A = [
                     'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                     'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
                     'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
                 ]
+                required_alarms_B = [
+                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                ]
+
+                # Determina quale configurazione è presente
+                count_A = sum(1 for alarm in required_alarms_A if alarm in received_alarms)
+                count_B = sum(1 for alarm in required_alarms_B if alarm in received_alarms)
+
+                if count_B > count_A:
+                    log_step("ℹ️ Rilevata configurazione 3 sensori lato B")
+                    required_alarms = required_alarms_B
+                else:
+                    log_step("ℹ️ Configurazione 3 sensori lato A (default)")
+                    required_alarms = required_alarms_A
+
             elif num_sensors == 6:
-                expected_sensor_alarms = [
+                # Per 6 sensori, parti con 6 allarmi base (3 lato A + 3 lato B)
+                required_alarms = [
                     'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                     'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
                     'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
@@ -674,69 +801,89 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
                     'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
                 ]
-            else:  # 12 sensori
-                expected_sensor_alarms = [
-                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                acceptable_additions = [
                     'EGM_OUT_SENS_23_VAR_33',  # F12A_L2
-                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
-                    'EGM_OUT_SENS_23_VAR_35',  # F12B_L2
-                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
                     'EGM_OUT_SENS_23_VAR_37',  # F4A_L2
-                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
-                    'EGM_OUT_SENS_23_VAR_39',  # F4B_L2
-                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
                     'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
-                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
-                    'EGM_OUT_SENS_23_VAR_43',  # F8B_L2
                 ]
-            
-            # Separa allarmi attesi da altri allarmi
-            other_alarms = {}
-            for alarm_key, alarm_value in received_alarms.items():
-                if alarm_key not in expected_sensor_alarms:
-                    other_alarms[alarm_key] = alarm_value
-            
-            # Verifica presenza allarmi attesi
+
+                # Adatta gli attesi in base a cosa troviamo
+                log_step("=== Configurazione flessibile 6 sensori ===")
+                for alarm in received_alarms.keys():
+                    if alarm in acceptable_additions and alarm not in required_alarms:
+                        desc = alarm_mapping.get(alarm, alarm)
+                        log_step(f"ℹ️ Aggiunto allarme {alarm} ({desc}) agli attesi")
+                        required_alarms.append(alarm)
+
+            else:  # 12 sensori
+                required_alarms = [
+                    'EGM_OUT_SENS_23_VAR_32', 'EGM_OUT_SENS_23_VAR_33',
+                    'EGM_OUT_SENS_23_VAR_34', 'EGM_OUT_SENS_23_VAR_35',
+                    'EGM_OUT_SENS_23_VAR_36', 'EGM_OUT_SENS_23_VAR_37',
+                    'EGM_OUT_SENS_23_VAR_38', 'EGM_OUT_SENS_23_VAR_39',
+                    'EGM_OUT_SENS_23_VAR_40', 'EGM_OUT_SENS_23_VAR_41',
+                    'EGM_OUT_SENS_23_VAR_42', 'EGM_OUT_SENS_23_VAR_43',
+                ]
+
+            # Verifica allarmi
             missing_alarms = []
             found_alarms = []
-            
+            other_alarms = {}
+
             log_step("=== Verifica Allarmi Sensori ===")
-            for expected in expected_sensor_alarms:
+
+            # Controlla allarmi richiesti
+            for expected in required_alarms:
+                desc = alarm_mapping.get(expected, expected)
                 if expected in received_alarms:
                     found_alarms.append(expected)
                     value = received_alarms[expected]
-                    log_step(f"✓ {expected}: {value}")
+                    log_step(f"✓ {expected} ({desc}): {value}")
                     results['alarm_values'][expected] = value
                 else:
                     missing_alarms.append(expected)
-                    log_step(f"✗ {expected}: NON TROVATO", False)
-            
+                    log_step(f"✗ {expected} ({desc}): NON TROVATO", False)
+
+            # Raccogli altri allarmi non attesi
+            for alarm_key, alarm_value in received_alarms.items():
+                if alarm_key not in required_alarms:
+                    desc = alarm_mapping.get(alarm_key, "Sconosciuto")
+                    other_alarms[alarm_key] = alarm_value
+
             # Mostra altri allarmi trovati
             if other_alarms:
                 log_step("=== Altri Allarmi Trovati ===")
                 for alarm_key, alarm_value in other_alarms.items():
-                    log_step(f"ℹ️ {alarm_key}: {alarm_value}")
-                results['other_alarms'] = other_alarms
-            
-            # Risultati
+                    desc = alarm_mapping.get(alarm_key, "Sconosciuto")
+                    log_step(f"ℹ️ {alarm_key} ({desc}): {alarm_value}")
+
+            # Imposta i risultati
             results['found_alarms'] = found_alarms
             results['missing_alarms'] = missing_alarms
-            results['total_expected'] = len(expected_sensor_alarms)
+            results['expected_alarms'] = required_alarms
+            results['other_alarms'] = other_alarms
+            results['total_expected'] = len(required_alarms)
             results['total_found'] = len(found_alarms)
             results['success'] = len(missing_alarms) == 0
-            
+
             if results['success']:
                 log_step(f"✅ Test superato! Tutti gli allarmi ricevuti ({results['total_found']}/{results['total_expected']})")
             else:
                 log_step(f"❌ Test fallito! Mancano {len(missing_alarms)} allarmi su {results['total_expected']}", False)
-            
+
         except Exception as e:
             log_step(f"Errore durante il test: {str(e)}", False)
             results['error'] = str(e)
-        
+            # Assicura che i valori siano impostati anche in caso di errore
+            results['total_expected'] = len(results.get('expected_alarms', []))
+            results['total_found'] = len(results.get('found_alarms', []))
+
         results['end_time'] = datetime.now()
         results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
-        
+
+        # Debug finale
+        print(f"DEBUG run_alarm_test - Returning: total_found={results['total_found']}, total_expected={results['total_expected']}")
+
         return results
 
 # Istanza singleton

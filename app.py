@@ -644,7 +644,7 @@ def test_alarm():
         device_id = request.form.get('device_id')
         num_sensors = int(request.form.get('num_sensors', 6))
         ui_location = request.form.get('ui_location', 'Lazio')
-        time_range = int(request.form.get('time_range', 60))  # Default 60 minuti per allarmi
+        time_range = int(request.form.get('time_range', 120))  # Default 60 minuti per allarmi
         
         if not device_id:
             return json.dumps({

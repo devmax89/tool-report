@@ -17,7 +17,7 @@ const urlParams = new URLSearchParams(window.location.search);
 const deviceId = urlParams.get('device_id');
 const numSensors = parseInt(urlParams.get('num_sensors') || '6');
 const ui = urlParams.get('ui') || 'Lazio';
-const timeout = parseInt(urlParams.get('timeout') || '60');
+const timeout = parseInt(urlParams.get('timeout') || '120');
 
 // Inizializza connessione WebSocket
 function initSocket() {
@@ -86,6 +86,14 @@ function initSocket() {
     socket.on('monitoring_error', function(data) {
         console.error('Errore:', data);
         updateStatus(`Errore: ${data.error}`, 'error');
+    });
+
+    socket.on('config_detected', function(data) {
+        console.log('Configurazione rilevata:', data.message);
+        // Opzionale: mostra un messaggio all'utente
+        const statusDiv = document.getElementById('statusMessage');
+        const currentMessage = statusDiv.textContent;
+        statusDiv.textContent = currentMessage + ' - ' + data.message;
     });
 }
 

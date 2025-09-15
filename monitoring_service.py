@@ -49,13 +49,22 @@ class AlarmMonitor:
         found_metrics = {}
         expected_metrics = self._get_expected_metrics(num_sensors)
         
-        # Dati per allarmi
+        # Dati per allarmi - ottieni configurazione iniziale
         found_alarms = {}
         other_alarms = {}
-        expected_alarms = self._get_expected_alarms(num_sensors)
+        alarm_config = self._get_expected_alarms(num_sensors)
         
-        # Storia eventi
+        # Prepara lista iniziale di allarmi attesi
+        if isinstance(alarm_config, dict):
+            expected_alarms = alarm_config['primary']
+            is_flexible = alarm_config.get('flexible', False)
+        else:
+            expected_alarms = alarm_config
+            is_flexible = False
+        
+        # Storia eventi e allarmi ricevuti
         event_history = []
+        all_received_alarms = {}  # Traccia tutti gli allarmi mai ricevuti
         
         while not stop_event.is_set():
             current_time = datetime.now()
@@ -115,44 +124,77 @@ class AlarmMonitor:
                 )
                 
                 if success_lv and 'lastVal' in lastval_data:
+                    # Prima raccogli TUTTI gli allarmi presenti
+                    current_received_alarms = {}
                     for entry in lastval_data.get('lastVal', []):
                         if 'metrics' in entry:
                             for metric in entry['metrics']:
                                 metric_type = metric.get('metricType', '')
                                 metric_val = metric.get('val', '')
-                                
-                                # Controlla se è un allarme EGM_OUT_SENS
                                 if 'EGM_OUT_SENS' in metric_type:
-                                    timestamp = datetime.now().strftime('%H:%M:%S')
-                                    
-                                    if metric_type in expected_alarms:
-                                        # Allarme atteso
-                                        if metric_type not in found_alarms:
-                                            found_alarms[metric_type] = metric_val
-                                            
-                                            alarm_entry = {
-                                                'alarm_type': metric_type,
-                                                'value': metric_val,
-                                                'timestamp': timestamp,
-                                                'elapsed': str(elapsed).split('.')[0],
-                                                'is_expected': True
-                                            }
-                                            event_history.append(('alarm', alarm_entry))
-                                            self.socketio.emit('alarm_found', alarm_entry, room=sid)
-                                    else:
-                                        # Altro allarme non atteso
-                                        if metric_type not in other_alarms:
-                                            other_alarms[metric_type] = metric_val
-                                            
-                                            other_alarm_entry = {
-                                                'alarm_type': metric_type,
-                                                'value': metric_val,
-                                                'timestamp': timestamp,
-                                                'elapsed': str(elapsed).split('.')[0],
-                                                'is_expected': False
-                                            }
-                                            event_history.append(('other_alarm', other_alarm_entry))
-                                            self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
+                                    current_received_alarms[metric_type] = metric_val
+                                    all_received_alarms[metric_type] = metric_val
+                    
+                    # Adatta dinamicamente gli allarmi attesi SE configurazione flessibile
+                    if is_flexible and isinstance(alarm_config, dict):
+                        if num_sensors == 3:
+                            # Conta quali allarmi sono presenti per decidere A o B
+                            primary_count = sum(1 for alarm in alarm_config['primary'] if alarm in all_received_alarms)
+                            alt_count = sum(1 for alarm in alarm_config.get('alternative', []) if alarm in all_received_alarms)
+                            
+                            if alt_count > primary_count and alt_count > 0:
+                                if expected_alarms != alarm_config['alternative']:
+                                    expected_alarms = alarm_config['alternative']
+                                    self.socketio.emit('config_detected', {
+                                        'message': 'Rilevata configurazione 3 sensori lato B'
+                                    }, room=sid)
+                            else:
+                                expected_alarms = alarm_config['primary']
+                        
+                        elif num_sensors == 6:
+                            # Parte con i primari e aggiunge quelli trovati che sono accettabili
+                            new_expected = list(alarm_config['primary'])
+                            for alarm in all_received_alarms:
+                                if alarm in alarm_config.get('acceptable', []) and alarm not in new_expected:
+                                    new_expected.append(alarm)
+                                    if len(new_expected) > len(expected_alarms):
+                                        self.socketio.emit('config_detected', {
+                                            'message': f'Aggiunto allarme {alarm} agli attesi'
+                                        }, room=sid)
+                            expected_alarms = new_expected
+                    
+                    # ORA processa gli allarmi con la lista attesa aggiornata
+                    for metric_type, metric_val in current_received_alarms.items():
+                        timestamp = datetime.now().strftime('%H:%M:%S')
+                        
+                        if metric_type in expected_alarms:
+                            # Allarme atteso
+                            if metric_type not in found_alarms:
+                                found_alarms[metric_type] = metric_val
+                                
+                                alarm_entry = {
+                                    'alarm_type': metric_type,
+                                    'value': metric_val,
+                                    'timestamp': timestamp,
+                                    'elapsed': str(elapsed).split('.')[0],
+                                    'is_expected': True
+                                }
+                                event_history.append(('alarm', alarm_entry))
+                                self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                        else:
+                            # Altro allarme non atteso
+                            if metric_type not in other_alarms:
+                                other_alarms[metric_type] = metric_val
+                                
+                                other_alarm_entry = {
+                                    'alarm_type': metric_type,
+                                    'value': metric_val,
+                                    'timestamp': timestamp,
+                                    'elapsed': str(elapsed).split('.')[0],
+                                    'is_expected': False
+                                }
+                                event_history.append(('other_alarm', other_alarm_entry))
+                                self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
                 
                 # Invia aggiornamenti di stato
                 missing_metrics = [m for m in expected_metrics if m not in found_metrics]
@@ -208,25 +250,26 @@ class AlarmMonitor:
     
     def _get_expected_metrics(self, num_sensors):
         """Restituisce le metriche attese organizzate per categoria"""
-
+        
         # Centralina Meteo
         weather_metrics = [
             'EIT_WINDVEL', 'EIT_WINDDIR1', 'EIT_HUMIDITY',
             'EIT_TEMPERATURE', 'EIT_PIROMETER'
         ]
-
+        
         # Smart Junction Box
         junction_box_metrics = [
             'EIT_ACCEL_X', 'EIT_ACCEL_Y', 'EIT_ACCEL_Z',
             'EIT_INCLIN_X', 'EIT_INCLIN_Y'
         ]
-
+        
         # Sensori di Tiro
         if num_sensors == 3:
             load_metrics = [
                 'EIT_LOAD_04_A_L1', 'EIT_LOAD_08_A_L1', 'EIT_LOAD_12_A_L1'
             ]
         elif num_sensors == 6:
+            # CORRETTO: Metriche di carico per 6 sensori
             load_metrics = [
                 'EIT_LOAD_04_A_L1', 'EIT_LOAD_04_B_L1',
                 'EIT_LOAD_08_A_L1', 'EIT_LOAD_08_B_L1',
@@ -238,25 +281,52 @@ class AlarmMonitor:
                 for side in ['A', 'B']:
                     for line in ['L1', 'L2']:
                         load_metrics.append(f'EIT_LOAD_{load}_{side}_{line}')
-    
+        
         return weather_metrics + junction_box_metrics + load_metrics
     
     def _get_expected_alarms(self, num_sensors):
         """Restituisce gli allarmi attesi in base al numero di sensori"""
         if num_sensors == 3:
-            return [
-                'EGM_OUT_SENS_23_VAR_32',
-                'EGM_OUT_SENS_23_VAR_36',
-                'EGM_OUT_SENS_23_VAR_40'
-            ]
+            # Per 3 sensori, prepara entrambe le possibilità
+            return {
+                'primary': [
+                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                ],
+                'alternative': [
+                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                ],
+                'flexible': True
+            }
         elif num_sensors == 6:
-            return [
-                'EGM_OUT_SENS_23_VAR_32', 'EGM_OUT_SENS_23_VAR_34',
-                'EGM_OUT_SENS_23_VAR_36', 'EGM_OUT_SENS_23_VAR_38',
-                'EGM_OUT_SENS_23_VAR_40', 'EGM_OUT_SENS_23_VAR_42'
-            ]
+            return {
+                'primary': [
+                    'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
+                    'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
+                    'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
+                    'EGM_OUT_SENS_23_VAR_38',  # F4B_L1
+                    'EGM_OUT_SENS_23_VAR_40',  # F8A_L1
+                    'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
+                ],
+                'acceptable': [
+                    'EGM_OUT_SENS_23_VAR_33',  # F12A_L2
+                    'EGM_OUT_SENS_23_VAR_37',  # F4A_L2
+                    'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
+                ],
+                'flexible': True
+            }
         else:  # 12 sensori
-            alarms = []
-            for i in range(32, 44):
-                alarms.append(f'EGM_OUT_SENS_23_VAR_{i}')
-            return alarms
+            return {
+                'primary': [
+                    'EGM_OUT_SENS_23_VAR_32', 'EGM_OUT_SENS_23_VAR_33',
+                    'EGM_OUT_SENS_23_VAR_34', 'EGM_OUT_SENS_23_VAR_35',
+                    'EGM_OUT_SENS_23_VAR_36', 'EGM_OUT_SENS_23_VAR_37',
+                    'EGM_OUT_SENS_23_VAR_38', 'EGM_OUT_SENS_23_VAR_39',
+                    'EGM_OUT_SENS_23_VAR_40', 'EGM_OUT_SENS_23_VAR_41',
+                    'EGM_OUT_SENS_23_VAR_42', 'EGM_OUT_SENS_23_VAR_43'
+                ],
+                'flexible': False
+            }
