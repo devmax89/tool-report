@@ -219,8 +219,12 @@ function addFoundMetric(data) {
         }
     }
     
+    // Mostra anche la fonte se disponibile
+    const sourceIcon = data.source === 'lastval' ? '📌' : '📡';
+    const sourceText = data.source ? ` [${sourceIcon} ${data.source}]` : '';
+    
     itemDiv.innerHTML = `
-        <strong>${category} ${data.metric_type}</strong><br>
+        <strong>${category} ${data.metric_type}${sourceText}</strong><br>
         📍 ${data.timestamp} - Valore: ${data.value}
     `;
     foundDiv.appendChild(itemDiv);

@@ -420,7 +420,7 @@ class DigilTestService:
         return results
     
     def run_metrics_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=5, progress_callback=None):
-        """Esegue il test Metriche in Range"""
+        """Esegue il test Metriche in Range con doppia verifica (tm + lastval)"""
         results = {
             'success': False,
             'device_id': device_id,
@@ -457,20 +457,15 @@ class DigilTestService:
             log_step(f"Recupero metriche ultimi {time_range_minutes} minuti...")
             log_step(f"Periodo: {start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}")
             
-            # Recupera dati telemetria
-            success, tm_data = self.get_telemetry_data(device_id, ui, start_timestamp, end_timestamp)
+            # Prima chiamata: telemetria
+            success_tm, tm_data = self.get_telemetry_data(device_id, ui, start_timestamp, end_timestamp)
             
-            if not success:
-                log_step(f"Errore recupero dati: {tm_data}", False)
-                results['error'] = tm_data
-                return results
-            
-            # Analizza metriche ricevute
+            # Analizza metriche ricevute dalla telemetria
             received_metrics = set()
             metric_values = {}
             
-            if 'tm' in tm_data and tm_data['tm']:
-                log_step(f"Trovate {len(tm_data['tm'])} letture")
+            if success_tm and 'tm' in tm_data and tm_data['tm']:
+                log_step(f"Trovate {len(tm_data['tm'])} letture dalla telemetria")
                 
                 for tm_entry in tm_data['tm']:
                     if 'metrics' in tm_entry:
@@ -486,16 +481,49 @@ class DigilTestService:
                             metric_values[metric_type].append({
                                 'name': metric_name,
                                 'value': metric_val,
-                                'timestamp': tm_entry.get('timestamp', '')
+                                'timestamp': tm_entry.get('timestamp', ''),
+                                'source': 'telemetry'
                             })
-            else:
-                log_step("Nessuna lettura trovata nel periodo", False)
             
-            # Ottieni definizioni metriche con categorie
+            # Ottieni definizioni metriche
             metrics_def = self.get_metric_definitions(num_sensors)
             expected_metrics = metrics_def['all'] if isinstance(metrics_def, dict) else metrics_def
             
-            # Se abbiamo le categorie, mostra i risultati per categoria
+            # Verifica quali metriche mancano dopo la prima chiamata
+            missing_after_tm = [m for m in expected_metrics if m not in received_metrics]
+            
+            if missing_after_tm:
+                log_step(f"Mancano {len(missing_after_tm)} metriche dalla telemetria, controllo lastval...")
+                
+                # Seconda chiamata: lastval per le metriche mancanti
+                success_lv, lastval_data = self.get_lastval_data(device_id, ui, start_timestamp, end_timestamp)
+                
+                if success_lv and 'lastVal' in lastval_data:
+                    log_step(f"Trovati {len(lastval_data.get('lastVal', []))} record da lastval")
+                    
+                    for entry in lastval_data.get('lastVal', []):
+                        if 'metrics' in entry:
+                            for metric in entry['metrics']:
+                                metric_type = metric.get('metricType', '')
+                                metric_val = metric.get('val', '')
+                                
+                                # Aggiungi solo metriche che erano mancanti e sono attese
+                                if metric_type in missing_after_tm:
+                                    received_metrics.add(metric_type)
+                                    
+                                    if metric_type not in metric_values:
+                                        metric_values[metric_type] = []
+                                    metric_values[metric_type].append({
+                                        'name': metric_type,
+                                        'value': metric_val,
+                                        'timestamp': entry.get('timestamp', ''),
+                                        'source': 'lastval'
+                                    })
+                                    log_step(f"✓ Trovata {metric_type} da lastval: {metric_val}")
+            else:
+                log_step("Tutte le metriche trovate dalla telemetria!")
+            
+            # Mostra risultati per categoria
             if isinstance(metrics_def, dict):
                 log_step("=== Centralina Meteo ===")
                 for metric in metrics_def['weather']:
@@ -503,7 +531,7 @@ class DigilTestService:
                         results['metrics_by_category']['weather']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']}")
+                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
                     else:
                         results['metrics_by_category']['weather']['missing'].append(metric)
                         log_step(f"✗ {metric}: NON RICEVUTA", False)
@@ -514,7 +542,7 @@ class DigilTestService:
                         results['metrics_by_category']['junction_box']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']}")
+                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
                     else:
                         results['metrics_by_category']['junction_box']['missing'].append(metric)
                         log_step(f"✗ {metric}: NON RICEVUTA", False)
@@ -525,12 +553,12 @@ class DigilTestService:
                         results['metrics_by_category']['load']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']}")
+                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
                     else:
                         results['metrics_by_category']['load']['missing'].append(metric)
                         log_step(f"✗ {metric}: NON RICEVUTA", False)
             
-            # Calcola totali
+            # Calcola totali finali
             missing_metrics = []
             found_metrics = []
             
