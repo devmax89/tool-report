@@ -120,9 +120,7 @@ class AlarmMonitor:
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
                 
                 # Check 2: Lastval per metriche mancanti E allarmi
-                success_lv, lastval_data = digil_test_service.get_lastval_data(
-                    device_id, ui, start_timestamp, end_timestamp
-                )
+                success_lv, lastval_data = digil_test_service.get_lastval_data(device_id, ui)
                 
                 if success_lv and 'lastVal' in lastval_data:
                     current_received_alarms = {}

@@ -470,16 +470,12 @@
                 'EGM_OUT_SENS_23_VAR_31': 'Inc_Y'
             };
         
-            // Vai direttamente al test standard
-            const timeRange = prompt('Controlla allarmi degli ultimi X minuti:', '60');
-            if (!timeRange) return;
-        
             const resultsDiv = document.getElementById('testResults');
             resultsDiv.innerHTML = `
                 <div class="alert alert-info">
                     <h5>🚨 Test Allarme Metriche in corso...</h5>
                     <div class="spinner"></div>
-                    <p>Recupero allarmi degli ultimi ${timeRange} minuti...</p>
+                    <p>Recupero ultimi allarmi disponibili...</p>
                     <p>UI: ${uiLocation}</p>
                 </div>
             `;
@@ -489,7 +485,6 @@
             formData.append('device_id', deviceId);
             formData.append('num_sensors', numSensors);
             formData.append('ui_location', uiLocation);
-            formData.append('time_range', timeRange);
             
             fetch('/test_alarm', {
                 method: 'POST',
@@ -507,7 +502,8 @@
                             <h5>✅ Test Allarmi Completato - SUPERATO</h5>
                             <p><strong>Device:</strong> ${deviceId}</p>
                             <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            <br>
+                            <p>Response</p>
                             
                             ${data.found_alarms && data.found_alarms.length > 0 ? `
                                 <details style="margin-top: 15px;">
@@ -560,7 +556,8 @@
                                     return `${alarm} - ${friendlyName}`;
                                 }).join(', ') : 
                                 'N/A'}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            <br>
+                            <p>Response</p>
                             
                             ${data.found_alarms && data.found_alarms.length > 0 ? `
                                 <details style="margin-top: 15px;">

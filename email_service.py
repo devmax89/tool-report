@@ -12,8 +12,27 @@ from pathlib import Path
 from dotenv import load_dotenv
 from jinja2 import Template
 
-# Carica le variabili d'ambiente
-load_dotenv()
+# Carica le variabili d'ambiente dal percorso corretto
+if getattr(sys, 'frozen', False):
+    # Se è un exe compilato
+    base_path = Path(sys.executable).parent
+    
+    # Cerca prima in _internal (struttura COLLECT)
+    env_path = base_path / '_internal' / '.env'
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"✅ File .env caricato da: {env_path}")
+    else:
+        # Fallback: cerca nella stessa cartella dell'exe
+        env_path = base_path / '.env'
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"✅ File .env caricato da: {env_path}")
+        else:
+            print("⚠️ File .env non trovato")
+else:
+    # Se è uno script Python normale
+    load_dotenv()
 
 class EmailService:
     def __init__(self):
@@ -55,11 +74,20 @@ class EmailService:
     
     def load_recipients_config(self):
         """Carica la configurazione dei destinatari dal file JSON"""
-        config_path = Path('config/email_recipients.json')
+        # Gestisci il percorso per exe compilato
+        if getattr(sys, 'frozen', False):
+            base_path = Path(sys.executable).parent
+            # Prima prova in _internal
+            config_path = base_path / '_internal' / 'config' / 'email_recipients.json'
+            if not config_path.exists():
+                # Fallback nella directory principale
+                config_path = base_path / 'config' / 'email_recipients.json'
+        else:
+            config_path = Path('config/email_recipients.json')
         
         # Se non esiste, crea il file con configurazione di default
         if not config_path.exists():
-            config_path.parent.mkdir(exist_ok=True)
+            config_path.parent.mkdir(exist_ok=True, parents=True)
             default_config = {
                 "MII": {
                     "to": ["m.tavernese@reply.it"],
@@ -121,8 +149,6 @@ class EmailService:
             return True, f"Connessione a {self.active_provider} riuscita"
         except Exception as e:
             return False, f"Errore connessione: {str(e)}"
-    
-
 
     def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None):
         """Invia il report via email"""
@@ -154,12 +180,14 @@ class EmailService:
             msg['Subject'] = f"Report DIGIL - {vendor} - {date_formatted} - Device {device_id}"
     
             # Carica e renderizza il template HTML
-            template_path = Path('templates/email_template.html')
-    
-            # Se l'app è compilata con PyInstaller
             if getattr(sys, 'frozen', False):
-                # RIMOSSO: import sys (già importato all'inizio del file)
-                template_path = Path(sys._MEIPASS) / 'templates' / 'email_template.html'
+                # Per exe compilato, cerca in _internal
+                base_path = Path(sys.executable).parent
+                template_path = base_path / '_internal' / 'templates' / 'email_template.html'
+                if not template_path.exists():
+                    template_path = Path(sys._MEIPASS) / 'templates' / 'email_template.html'
+            else:
+                template_path = Path('templates/email_template.html')
     
             with open(template_path, 'r', encoding='utf-8') as f:
                 template = Template(f.read())

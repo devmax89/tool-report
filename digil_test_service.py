@@ -662,7 +662,7 @@ class DigilTestService:
                 log_step(f"Mancano {len(missing_after_tm)} metriche dalla telemetria, controllo lastval...")
                 
                 # Seconda chiamata: lastval per le metriche mancanti
-                success_lv, lastval_data = self.get_lastval_data(device_id, ui, start_timestamp, end_timestamp)
+                success_lv, lastval_data = self.get_lastval_data(device_id, ui)
                 
                 if success_lv and 'lastVal' in lastval_data:
                     log_step(f"Trovati {len(lastval_data.get('lastVal', []))} record da lastval")
@@ -923,22 +923,28 @@ class DigilTestService:
         return result
 
 
-    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
-        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
+    def get_lastval_data(self, device_id, ui):
+        """Recupera gli ultimi valori e allarmi dal sistema (sempre chiamata secca)"""
         try:
             base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
             url = f"http://{base_url}/api/v1/lastval"
+
             params = {
                 'ui': ui,
                 'deviceID': device_id
             }
-            if start_timestamp and end_timestamp:
-                params['startDate'] = str(start_timestamp)
-                params['endDate'] = str(end_timestamp)
+
             headers = {
                 'Accept': 'application/json'
             }
+
+            print(f"📊 Chiamata API lastval (secca): {url}")
+            print(f"   Parametri: {params}")
+
             response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+
+            print(f"   Response status: {response.status_code}")
+
             if response.status_code == 200:
                 data = response.json()
                 if 'lastVal' in data:
@@ -949,10 +955,11 @@ class DigilTestService:
                 if response.text:
                     error_msg += f" - {response.text[:200]}"
                 return False, error_msg
+
         except Exception as e:
             return False, f"Errore recupero lastval: {str(e)}"
 
-    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=120, progress_callback=None):
+    def run_alarm_test(self, device_id, num_sensors, ui="Lazio", progress_callback=None):
         """Esegue il test Allarme Metriche con logica flessibile e fallback API aggregata"""
         results = {
             'success': False,
@@ -980,19 +987,11 @@ class DigilTestService:
             print(f"{'✓' if success else '✗'} {message}")
 
         try:
-            # Calcola timestamp per il range temporale
-            end_time = datetime.now()
-            start_time = end_time - timedelta(minutes=time_range_minutes)
-
-            start_timestamp = int(start_time.timestamp())
-            end_timestamp = int(end_time.timestamp())
-
-            log_step(f"Recupero allarmi ultimi {time_range_minutes} minuti...")
-            log_step(f"Periodo: {start_time.strftime('%H:%M:%S')} - {end_time.strftime('%H:%M:%S')}")
+            log_step(f"Recupero ultimi allarmi disponibili...")
             log_step(f"UI: {ui}, Sensori: {num_sensors}")
 
-            # Recupera dati lastval
-            success, lastval_data = self.get_lastval_data(device_id, ui, start_timestamp, end_timestamp)
+            # Recupera dati lastval (sempre chiamata secca)
+            success, lastval_data = self.get_lastval_data(device_id, ui)
 
             if not success:
                 log_step(f"Errore recupero dati: {lastval_data}", False)
@@ -1077,7 +1076,7 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_42', 'EGM_OUT_SENS_23_VAR_43',
                 ]
 
-            # AGGIUNGI QUI IL FALLBACK API AGGREGATA
+            # FALLBACK API AGGREGATA
             missing_after_lastval = [a for a in required_alarms if a not in received_alarms]
             
             if missing_after_lastval:
