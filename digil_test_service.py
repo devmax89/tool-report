@@ -385,47 +385,86 @@ class DigilTestService:
             return False, f"Errore recupero telemetria: {str(e)}"
     
 
-    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
-        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
+    def get_device_aggregated_data(self, device_id):
+        """Ottiene dati aggregati del dispositivo dall'API /digils/:deviceId"""
         try:
-            # URL per lastval
-            base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
-            url = f"http://{base_url}/api/v1/lastval"
+            # Ottieni prima il token di autenticazione
+            success, msg = self.get_auth_token()
+            if not success:
+                print(f"   ✗ Errore ottenimento token: {msg}")
+                return False, f"Errore ottenimento token: {msg}"
 
-            params = {
-                'ui': ui,
-                'deviceID': device_id
-            }
+            print(f"   ✓ Token ottenuto")
 
-            # Aggiungi range temporale se specificato
-            if start_timestamp and end_timestamp:
-                params['startDate'] = str(start_timestamp)
-                params['endDate'] = str(end_timestamp)
+            # Trasforma il device ID
+            transformed_id = self.transform_device_id_fallback(device_id)
 
+            # Prepara la chiamata
+            url = f"{self.base_url}/api/v1/digils/{transformed_id}"
             headers = {
+                'Authorization': f'Bearer {self.access_token}',
                 'Accept': 'application/json'
             }
 
-            print(f"📊 Chiamata API lastval: {url}")
-            print(f"   Parametri: {params}")
+            print(f"📊 Chiamata API aggregata:")
+            print(f"   URL: {url}")
+            print(f"   Device ID: {device_id} → {transformed_id}")
 
-            response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+            # Fai la chiamata
+            response = requests.get(url, headers=headers, verify=False, timeout=30)
 
             print(f"   Response status: {response.status_code}")
 
             if response.status_code == 200:
                 data = response.json()
-                if 'lastVal' in data:
-                    print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
+                print(f"   ✓ Risposta OK, dati ricevuti")
+                if 'measures' in data:
+                    print(f"   ✓ Trovate {len(data['measures'])} measures")
                 return True, data
+            elif response.status_code == 401:
+                print(f"   ✗ Errore 401: Token non valido")
+                return False, "Token non valido"
+            elif response.status_code == 404:
+                print(f"   ✗ Errore 404: Device {transformed_id} non trovato")
+                return False, "Device non trovato"
             else:
-                error_msg = f"Errore API: {response.status_code}"
+                print(f"   ✗ Errore HTTP {response.status_code}")
                 if response.text:
-                    error_msg += f" - {response.text[:200]}"
-                return False, error_msg
+                    print(f"   Response body: {response.text[:500]}")
+                return False, f"HTTP {response.status_code}"
 
+        except requests.exceptions.RequestException as e:
+            print(f"   ✗ Errore di rete: {e}")
+            return False, f"Errore di rete: {e}"
         except Exception as e:
-            return False, f"Errore recupero lastval: {str(e)}"
+            print(f"   ✗ Errore generico: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return False, str(e)
+
+    def transform_device_id_fallback(self, device_id):
+        # Dividi per ":"
+        parts = device_id.split(":")
+        
+        if len(parts) >= 5:
+            # Prendi i primi 5 numeri
+            first_five = ''.join(parts[:5])
+            
+            # Estrai le ultime 4 cifre dal nome del device
+            device_name = parts[-1] if len(parts) > 5 else ""
+            last_four = ''.join(filter(str.isdigit, device_name))[-4:]
+            
+            transformed = f"{first_five}_{last_four}"
+            return transformed
+        else:
+            # Fallback al metodo vecchio
+            no_colons = device_id.replace(":", "")
+            numbers = ''.join(filter(str.isdigit, no_colons))
+            if len(numbers) >= 4:
+                main_part = numbers[:-4]
+                last_four = numbers[-4:]
+                return f"{main_part}_{last_four}"
+            return numbers
     
     def run_downlink_test(self, device_id, progress_callback=None):
         """Esegue il test completo Downlink - versione ottimizzata"""
@@ -547,7 +586,7 @@ class DigilTestService:
         return results
     
     def run_metrics_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=5, progress_callback=None):
-        """Esegue il test Metriche in Range con doppia verifica (tm + lastval)"""
+        """Esegue il test Metriche in Range con tripla verifica (tm + lastval + aggregata)"""
         results = {
             'success': False,
             'device_id': device_id,
@@ -650,6 +689,81 @@ class DigilTestService:
             else:
                 log_step("Tutte le metriche trovate dalla telemetria!")
             
+            # TERZA CHIAMATA: API aggregata per metriche ancora mancanti
+            final_missing = [m for m in expected_metrics if m not in received_metrics]
+            
+            if final_missing:
+                log_step(f"⚠️ Ancora {len(final_missing)} metriche mancanti dopo tm+lastval")
+                log_step(f"📊 Tentativo con API aggregata di fallback...")
+                
+                success_agg, agg_data = self.get_device_aggregated_data(device_id)
+                
+            if success_agg and 'measures' in agg_data:
+                measures = agg_data['measures']
+                log_step(f"   Trovate {len(measures)} measures nell'API aggregata")
+                
+                # Debug: mostra alcune measures
+                measure_samples = list(measures.keys())[:5]
+                log_step(f"   Esempi di measures: {measure_samples}")
+                
+                # Conta quante measures sono vuote
+                empty_measures = [k for k, v in measures.items() if not v or v == {}]
+                if empty_measures:
+                    log_step(f"   ⚠️ {len(empty_measures)} measures sono vuote")
+                
+                # Analisi dati aggregati per metriche mancanti
+                metrics_found_from_aggregated = 0
+                
+                # Usa il reverse mapping per convertire da SENS_Digil2 a EIT
+                for measure_key, measure_data in measures.items():
+                    # Controlla se questa misura corrisponde a una metrica mancante
+                    if measure_key in self.reverse_metrics_mapping:
+                        eit_metric = self.reverse_metrics_mapping[measure_key]
+                        
+                        if eit_metric in final_missing:
+                            # Debug per vedere cosa c'è in measure_data
+                            if not measure_data or measure_data == {}:
+                                log_step(f"   ⚠️ {measure_key} → {eit_metric}: vuoto, skip")
+                                continue
+                            
+                            # Verifica che ci siano dati validi
+                            if isinstance(measure_data, dict) and len(measure_data) > 0:
+                                received_metrics.add(eit_metric)
+                                metrics_found_from_aggregated += 1
+                                
+                                # Gestisci diversi formati di dati
+                                if 'avg' in measure_data:
+                                    # Dati con min/avg/max (sensori di tiro, accelerometri, etc.)
+                                    value_str = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
+                                elif 'value' in measure_data:
+                                    # Dati con valore singolo (temperatura, batteria, etc.)
+                                    value_str = str(measure_data.get('value', 'N/A'))
+                                else:
+                                    log_step(f"   ⚠️ {measure_key}: formato dati non riconosciuto")
+                                    continue  # Skip se non ci sono dati validi
+                                
+                                if eit_metric not in metric_values:
+                                    metric_values[eit_metric] = []
+                                
+                                metric_values[eit_metric].append({
+                                    'name': eit_metric,
+                                    'value': value_str,
+                                    'timestamp': measure_data.get('timestamp', 'N/A'),
+                                    'source': 'aggregated-fallback'
+                                })
+                                
+                                log_step(f"   ✓ Recuperata {eit_metric} ({measure_key}): {value_str} [da API aggregata]")
+                
+                if metrics_found_from_aggregated == 0:
+                    log_step(f"   ⚠️ Nessuna metrica mancante recuperata dall'API aggregata")
+                else:
+                    log_step(f"   ✓ Recuperate {metrics_found_from_aggregated} metriche dall'API aggregata")
+            else:
+                if not success_agg:
+                    log_step(f"   ✗ API aggregata fallita: {agg_data}", False)
+                else:
+                    log_step(f"   ✗ API aggregata senza measures", False)
+            
             # Mostra risultati per categoria
             if isinstance(metrics_def, dict):
                 # Stazione Meteo
@@ -660,7 +774,8 @@ class DigilTestService:
                         results['metrics_by_category']['weather']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
+                            source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
                     else:
                         results['metrics_by_category']['weather']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -673,7 +788,8 @@ class DigilTestService:
                         results['metrics_by_category']['junction_box']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
+                            source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
                     else:
                         results['metrics_by_category']['junction_box']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -686,7 +802,8 @@ class DigilTestService:
                         results['metrics_by_category']['load']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
+                            source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
                     else:
                         results['metrics_by_category']['load']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -806,43 +923,37 @@ class DigilTestService:
         return result
 
 
-        def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
-            """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
-            try:
-                base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
-                url = f"http://{base_url}/api/v1/lastval"
-
-                params = {
-                    'ui': ui,
-                    'deviceID': device_id
-                }
-
-                if start_timestamp and end_timestamp:
-                    params['startDate'] = str(start_timestamp)
-                    params['endDate'] = str(end_timestamp)
-
-                headers = {
-                    'Accept': 'application/json'
-                }
-
-                response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    if 'lastVal' in data:
-                        print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
-                    return True, data
-                else:
-                    error_msg = f"Errore API: {response.status_code}"
-                    if response.text:
-                        error_msg += f" - {response.text[:200]}"
-                    return False, error_msg
-
-            except Exception as e:
-                return False, f"Errore recupero lastval: {str(e)}"
+    def get_lastval_data(self, device_id, ui, start_timestamp=None, end_timestamp=None):
+        """Recupera gli ultimi valori e allarmi dal sistema con range temporale opzionale"""
+        try:
+            base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
+            url = f"http://{base_url}/api/v1/lastval"
+            params = {
+                'ui': ui,
+                'deviceID': device_id
+            }
+            if start_timestamp and end_timestamp:
+                params['startDate'] = str(start_timestamp)
+                params['endDate'] = str(end_timestamp)
+            headers = {
+                'Accept': 'application/json'
+            }
+            response = requests.get(url, params=params, headers=headers, verify=False, timeout=30)
+            if response.status_code == 200:
+                data = response.json()
+                if 'lastVal' in data:
+                    print(f"   Trovati {len(data.get('lastVal', []))} record lastval")
+                return True, data
+            else:
+                error_msg = f"Errore API: {response.status_code}"
+                if response.text:
+                    error_msg += f" - {response.text[:200]}"
+                return False, error_msg
+        except Exception as e:
+            return False, f"Errore recupero lastval: {str(e)}"
 
     def run_alarm_test(self, device_id, num_sensors, ui="Lazio", time_range_minutes=120, progress_callback=None):
-        """Esegue il test Allarme Metriche con logica flessibile"""
+        """Esegue il test Allarme Metriche con logica flessibile e fallback API aggregata"""
         results = {
             'success': False,
             'device_id': device_id,
@@ -886,7 +997,6 @@ class DigilTestService:
             if not success:
                 log_step(f"Errore recupero dati: {lastval_data}", False)
                 results['error'] = lastval_data
-                # Imposta valori prima del return
                 results['total_expected'] = 0
                 results['total_found'] = 0
                 return results
@@ -894,25 +1004,10 @@ class DigilTestService:
             if 'lastVal' in lastval_data:
                 log_step(f"Ricevuti {len(lastval_data.get('lastVal', []))} record lastval")
 
-            # Mappa completa degli allarmi con descrizioni
-            alarm_mapping = {
-                'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
-                'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
-                'EGM_OUT_SENS_23_VAR_34': 'TC_F12B_L1',
-                'EGM_OUT_SENS_23_VAR_35': 'TC_F12B_L2',
-                'EGM_OUT_SENS_23_VAR_36': 'TC_F4A_L1',
-                'EGM_OUT_SENS_23_VAR_37': 'TC_F4A_L2',
-                'EGM_OUT_SENS_23_VAR_38': 'TC_F4B_L1',
-                'EGM_OUT_SENS_23_VAR_39': 'TC_F4B_L2',
-                'EGM_OUT_SENS_23_VAR_40': 'TC_F8A_L1',
-                'EGM_OUT_SENS_23_VAR_41': 'TC_F8A_L2',
-                'EGM_OUT_SENS_23_VAR_42': 'TC_F8B_L1',
-                'EGM_OUT_SENS_23_VAR_43': 'TC_F8B_L2',
-                'EGM_OUT_SENS_23_VAR_30': 'Inc_X_ALARM',
-                'EGM_OUT_SENS_23_VAR_31': 'Inc_Y_ALARM'
-            }
+            # Usa l'alarm_mapping dalla classe
+            alarm_mapping = self.alarm_mapping
 
-            # Raccogli tutti gli allarmi ricevuti
+            # Raccogli tutti gli allarmi ricevuti da lastval
             received_alarms = {}
 
             if 'lastVal' in lastval_data and lastval_data['lastVal']:
@@ -925,11 +1020,10 @@ class DigilTestService:
                             if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
                                 received_alarms[metric_type] = metric_val
 
-            # Definisci allarmi attesi base (minimo richiesto)
+            # Definisci allarmi attesi base
             required_alarms = []
 
             if num_sensors == 3:
-                # Per 3 sensori potrebbe essere lato A o lato B
                 required_alarms_A = [
                     'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                     'EGM_OUT_SENS_23_VAR_36',  # F4A_L1
@@ -941,7 +1035,6 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_42',  # F8B_L1
                 ]
 
-                # Determina quale configurazione è presente
                 count_A = sum(1 for alarm in required_alarms_A if alarm in received_alarms)
                 count_B = sum(1 for alarm in required_alarms_B if alarm in received_alarms)
 
@@ -953,7 +1046,6 @@ class DigilTestService:
                     required_alarms = required_alarms_A
 
             elif num_sensors == 6:
-                # Per 6 sensori, parti con 6 allarmi base (3 lato A + 3 lato B)
                 required_alarms = [
                     'EGM_OUT_SENS_23_VAR_32',  # F12A_L1
                     'EGM_OUT_SENS_23_VAR_34',  # F12B_L1
@@ -968,7 +1060,6 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_41',  # F8A_L2
                 ]
 
-                # Adatta gli attesi in base a cosa troviamo
                 log_step("=== Configurazione flessibile 6 sensori ===")
                 for alarm in received_alarms.keys():
                     if alarm in acceptable_additions and alarm not in required_alarms:
@@ -986,12 +1077,52 @@ class DigilTestService:
                     'EGM_OUT_SENS_23_VAR_42', 'EGM_OUT_SENS_23_VAR_43',
                 ]
 
-            # Verifica allarmi
+            # AGGIUNGI QUI IL FALLBACK API AGGREGATA
+            missing_after_lastval = [a for a in required_alarms if a not in received_alarms]
+            
+            if missing_after_lastval:
+                log_step(f"⚠️ Mancano {len(missing_after_lastval)} allarmi dopo lastval")
+                log_step(f"📊 Tentativo con API aggregata di fallback...")
+                
+                success_agg, agg_data = self.get_device_aggregated_data(device_id)
+                
+                if success_agg and 'measures' in agg_data:
+                    measures = agg_data['measures']
+                    
+                    # Mappa per convertire da measures a EGM_OUT_SENS
+                    measures_to_alarms = {
+                        'SENS_Digil2_TC_F12A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_32',
+                        'SENS_Digil2_TC_F12A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_33',
+                        'SENS_Digil2_TC_F12B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_34',
+                        'SENS_Digil2_TC_F12B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_35',
+                        'SENS_Digil2_TC_F4A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_36',
+                        'SENS_Digil2_TC_F4A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_37',
+                        'SENS_Digil2_TC_F4B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_38',
+                        'SENS_Digil2_TC_F4B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_39',
+                        'SENS_Digil2_TC_F8A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_40',
+                        'SENS_Digil2_TC_F8A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_41',
+                        'SENS_Digil2_TC_F8B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_42',
+                        'SENS_Digil2_TC_F8B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_43',
+                        'SENS_Digil2_Inc_X_IN_ALARM': 'EGM_OUT_SENS_23_VAR_30',
+                        'SENS_Digil2_Inc_Y_IN_ALARM': 'EGM_OUT_SENS_23_VAR_31'
+                    }
+                    
+                    for measure_key, alarm_key in measures_to_alarms.items():
+                        if alarm_key in missing_after_lastval and measure_key in measures:
+                            measure_data = measures[measure_key]
+                            if measure_data and 'value' in measure_data:
+                                received_alarms[alarm_key] = measure_data['value']
+                                desc = alarm_mapping.get(alarm_key, alarm_key)
+                                log_step(f"   ✓ Recuperato {alarm_key} ({desc}): {measure_data['value']} [da API aggregata]")
+                else:
+                    log_step(f"   ✗ API aggregata non disponibile o senza dati", False)
+
+            # Verifica allarmi finali
             missing_alarms = []
             found_alarms = []
             other_alarms = {}
 
-            log_step("=== Verifica Allarmi Sensori ===")
+            log_step("=== Verifica Allarmi Sensori di Tiro ===")
 
             # Controlla allarmi richiesti
             for expected in required_alarms:
@@ -1026,12 +1157,14 @@ class DigilTestService:
             results['total_expected'] = len(required_alarms)
             results['total_found'] = len(found_alarms)
             results['success'] = len(missing_alarms) == 0
+            
+            # Aggiungi versioni friendly per il frontend
             results['missing_alarms_friendly'] = [
-                f"{alarm} ({self.alarm_mapping.get(alarm, alarm)})" 
+                f"{alarm} ({alarm_mapping.get(alarm, alarm)})" 
                 for alarm in missing_alarms
             ]
             results['other_alarms_friendly'] = {
-                f"{key} ({self.alarm_mapping.get(key, 'Sconosciuto')})": value 
+                f"{key} ({alarm_mapping.get(key, 'Sconosciuto')})": value 
                 for key, value in other_alarms.items()
             }
 
@@ -1043,15 +1176,11 @@ class DigilTestService:
         except Exception as e:
             log_step(f"Errore durante il test: {str(e)}", False)
             results['error'] = str(e)
-            # Assicura che i valori siano impostati anche in caso di errore
             results['total_expected'] = len(results.get('expected_alarms', []))
             results['total_found'] = len(results.get('found_alarms', []))
 
         results['end_time'] = datetime.now()
         results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
-
-        # Debug finale
-        print(f"DEBUG run_alarm_test - Returning: total_found={results['total_found']}, total_expected={results['total_expected']}")
 
         return results
 
