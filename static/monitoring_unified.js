@@ -19,6 +19,24 @@ const numSensors = parseInt(urlParams.get('num_sensors') || '6');
 const ui = urlParams.get('ui') || 'Lazio';
 const timeout = parseInt(urlParams.get('timeout') || '120');
 
+const alarmDescriptions = {
+    'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
+    'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
+    'EGM_OUT_SENS_23_VAR_34': 'TC_F12B_L1',
+    'EGM_OUT_SENS_23_VAR_35': 'TC_F12B_L2',
+    'EGM_OUT_SENS_23_VAR_36': 'TC_F4A_L1',
+    'EGM_OUT_SENS_23_VAR_37': 'TC_F4A_L2',
+    'EGM_OUT_SENS_23_VAR_38': 'TC_F4B_L1',
+    'EGM_OUT_SENS_23_VAR_39': 'TC_F4B_L2',
+    'EGM_OUT_SENS_23_VAR_40': 'TC_F8A_L1',
+    'EGM_OUT_SENS_23_VAR_41': 'TC_F8A_L2',
+    'EGM_OUT_SENS_23_VAR_42': 'TC_F8B_L1',
+    'EGM_OUT_SENS_23_VAR_43': 'TC_F8B_L2',
+    'EGM_OUT_SENS_23_VAR_30': 'Inc_X',
+    'EGM_OUT_SENS_23_VAR_31': 'Inc_Y',
+    'EGM_OUT_SENS_23_VAR_7': 'Channel'
+};
+
 // Inizializza connessione WebSocket
 function initSocket() {
     socket = io();
@@ -258,8 +276,11 @@ function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const itemDiv = document.createElement('div');
     itemDiv.className = 'item found';
+    
+    const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
+    
     itemDiv.innerHTML = `
-        <strong>${data.alarm_type}</strong><br>
+        <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
         📍 ${data.timestamp} - Valore: ${data.value}
     `;
     foundDiv.appendChild(itemDiv);
@@ -268,14 +289,16 @@ function addFoundAlarm(data) {
 }
 
 function addOtherAlarm(data) {
-    // Mostra sezione se nascosta
     document.getElementById('otherAlarmsSection').style.display = 'block';
     
     const otherDiv = document.getElementById('otherAlarms');
     const itemDiv = document.createElement('div');
     itemDiv.className = 'item other';
+    
+    const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
+    
     itemDiv.innerHTML = `
-        <strong>${data.alarm_type}</strong><br>
+        <strong>${data.alarm_type} - ${friendlyName}</strong><br>
         📍 ${data.timestamp} - Valore: ${data.value}
     `;
     otherDiv.appendChild(itemDiv);
@@ -299,7 +322,8 @@ function updateWaitingAlarms(missingList) {
     missingList.forEach(alarm => {
         const itemDiv = document.createElement('div');
         itemDiv.className = 'item waiting';
-        itemDiv.innerHTML = `<strong>${alarm}</strong><br>⏳ In attesa...`;
+        const friendlyName = alarmDescriptions[alarm] || alarm;
+        itemDiv.innerHTML = `<strong>${alarm} - ${friendlyName}</strong><br>⏳ In attesa...`;
         waitingDiv.appendChild(itemDiv);
     });
 }

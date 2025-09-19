@@ -16,6 +16,133 @@ class DigilTestService:
         self.access_token = None
         self.token_expires_at = None
         
+        # MAPPATURE COMPLETE DAL DIZIONARIO
+        
+        # 1. SENSORI DI TIRO - Metriche EIT
+        self.load_metrics_mapping = {
+            # Fase 4
+            'EIT_LOAD_04_A_L1': 'SENS_Digil2_TC_F4A_L1',
+            'EIT_LOAD_04_A_L2': 'SENS_Digil2_TC_F4A_L2',
+            'EIT_LOAD_04_B_L1': 'SENS_Digil2_TC_F4B_L1',
+            'EIT_LOAD_04_B_L2': 'SENS_Digil2_TC_F4B_L2',
+            # Fase 8
+            'EIT_LOAD_08_A_L1': 'SENS_Digil2_TC_F8A_L1',
+            'EIT_LOAD_08_A_L2': 'SENS_Digil2_TC_F8A_L2',
+            'EIT_LOAD_08_B_L1': 'SENS_Digil2_TC_F8B_L1',
+            'EIT_LOAD_08_B_L2': 'SENS_Digil2_TC_F8B_L2',
+            # Fase 12
+            'EIT_LOAD_12_A_L1': 'SENS_Digil2_TC_F12A_L1',
+            'EIT_LOAD_12_A_L2': 'SENS_Digil2_TC_F12A_L2',
+            'EIT_LOAD_12_B_L1': 'SENS_Digil2_TC_F12B_L1',
+            'EIT_LOAD_12_B_L2': 'SENS_Digil2_TC_F12B_L2'
+        }
+        
+        # 2. SENSORI TIRO - Allarmi EGM
+        self.alarm_mapping = {
+            'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
+            'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
+            'EGM_OUT_SENS_23_VAR_34': 'TC_F12B_L1',
+            'EGM_OUT_SENS_23_VAR_35': 'TC_F12B_L2',
+            'EGM_OUT_SENS_23_VAR_36': 'TC_F4A_L1',
+            'EGM_OUT_SENS_23_VAR_37': 'TC_F4A_L2',
+            'EGM_OUT_SENS_23_VAR_38': 'TC_F4B_L1',
+            'EGM_OUT_SENS_23_VAR_39': 'TC_F4B_L2',
+            'EGM_OUT_SENS_23_VAR_40': 'TC_F8A_L1',
+            'EGM_OUT_SENS_23_VAR_41': 'TC_F8A_L2',
+            'EGM_OUT_SENS_23_VAR_42': 'TC_F8B_L1',
+            'EGM_OUT_SENS_23_VAR_43': 'TC_F8B_L2',
+            'EGM_OUT_SENS_23_VAR_30': 'Inc_X_ALARM',
+            'EGM_OUT_SENS_23_VAR_31': 'Inc_Y_ALARM'
+        }
+        
+        # 3. JUNCTION BOX - Accelerometri e Inclinometri
+        self.junction_box_mapping = {
+            # Accelerometri
+            'EIT_ACCEL_X': 'SENS_Digil2_Acc_X',
+            'EIT_ACCEL_Y': 'SENS_Digil2_Acc_Y',
+            'EIT_ACCEL_Z': 'SENS_Digil2_Acc_Z',
+            # Inclinometri
+            'EIT_INCLIN_X': 'SENS_Digil2_Inc_X',
+            'EIT_INCLIN_Y': 'SENS_Digil2_Inc_Y'
+        }
+        
+        # 4. STAZIONE METEO
+        self.weather_mapping = {
+            'EIT_WINDVEL': 'SENS_Digil2_Wind_Speed',
+            'EIT_WINDDIR1': 'SENS_Digil2_Wind_Dir',
+            'EIT_HUMIDITY': 'SENS_Digil2_Humidity',
+            'EIT_TEMPERATURE': 'SENS_Digil2_Temperature',
+            'EIT_PIROMETER': 'SENS_Digil2_Pirometer'
+        }
+        
+        # 5. SISTEMA BATTERIA E ALIMENTAZIONE
+        self.battery_mapping = {
+            'EIT_BATTERY_LEVEL': 'SENS_Digil2_BatteryLevel_Percent',
+            'EIT_BATTERY_STATE': 'SENS_Digil2_BatteryState_Percent',
+            'EIT_BATTERY_VOLT': 'SENS_Digil2_Battery_VOLT',
+            'EIT_BATTERY_AMPERE': 'SENS_Digil2_BatteryOut_AMPERE',
+            'EIT_BATTERY_TEMP': 'SENS_Digil2_Batt_Temp_1',
+            'EIT_SOLAR_VOLTAGE': 'SENS_Digil2_SolarPanelVoltage',
+            'EIT_SOLAR_CURRENT': 'SENS_Digil2_SolarPanelCurrent',
+            'EIT_MPPT_STATUS': 'SENS_Digil2_MPPTStatus',
+            'EIT_ENERGY_CONS': 'SENS_Digil2_ConsumptionEnergy',
+            'EIT_ENERGY_TOTAL': 'SENS_Digil2_TotalConsumptionEnergy'
+        }
+        
+        # 6. COMUNICAZIONE
+        self.communication_mapping = {
+            'EGM_OUT_SENS_23_VAR_7': 'SENS_Digil2_Channel',
+            'EIT_LTE_SIGNAL': 'SENS_Digil2_LtePowerSignal',
+            'EIT_NBIOT_SIGNAL': 'SENS_Digil2_NBIoTPowerSignal'
+        }
+        
+        # 7. TEMPERATURE CABINET
+        self.temperature_mapping = {
+            'EIT_TEMP_CABIN': 'SENS_Digil2_TmpInCabin',
+            'EIT_TEMP_DEVICE': 'SENS_Digil2_TmpDevice'
+        }
+        
+        # MAPPATURA UNIFICATA PER TUTTE LE METRICHE
+        self.all_metrics_mapping = {
+            **self.load_metrics_mapping,
+            **self.junction_box_mapping,
+            **self.weather_mapping,
+            **self.battery_mapping,
+            **self.communication_mapping,
+            **self.temperature_mapping
+        }
+        
+        # MAPPATURA INVERSA (SENS_Digil2 -> EIT)
+        self.reverse_metrics_mapping = {v: k for k, v in self.all_metrics_mapping.items()}
+        
+        # Descrizioni user-friendly per categorie
+        self.metric_categories = {
+            'weather': {
+                'name': '🌤️ Stazione Meteo',
+                'metrics': list(self.weather_mapping.keys())
+            },
+            'junction_box': {
+                'name': '📦 Smart Junction Box',
+                'metrics': list(self.junction_box_mapping.keys())
+            },
+            'load': {
+                'name': '⚡ Sensori di Tiro',
+                'metrics': list(self.load_metrics_mapping.keys())
+            },
+            'battery': {
+                'name': '🔋 Sistema Batteria',
+                'metrics': list(self.battery_mapping.keys())
+            },
+            'communication': {
+                'name': '📡 Comunicazione',
+                'metrics': list(self.communication_mapping.keys())
+            },
+            'temperature': {
+                'name': '🌡️ Temperature',
+                'metrics': list(self.temperature_mapping.keys())
+            }
+        }
+        
     def get_auth_token(self):
         """Ottiene token di autenticazione"""
         try:
@@ -525,38 +652,44 @@ class DigilTestService:
             
             # Mostra risultati per categoria
             if isinstance(metrics_def, dict):
-                log_step("=== Centralina Meteo ===")
+                # Stazione Meteo
+                log_step("=== 🌤️ Stazione Meteo ===")
                 for metric in metrics_def['weather']:
+                    sens_name = self.weather_mapping.get(metric, metric)
                     if metric in received_metrics:
                         results['metrics_by_category']['weather']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
                     else:
                         results['metrics_by_category']['weather']['missing'].append(metric)
-                        log_step(f"✗ {metric}: NON RICEVUTA", False)
-                
-                log_step("=== Smart Junction Box ===")
+                        log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
+
+                # Smart Junction Box
+                log_step("=== 📦 Smart Junction Box ===")
                 for metric in metrics_def['junction_box']:
+                    sens_name = self.junction_box_mapping.get(metric, metric)
                     if metric in received_metrics:
                         results['metrics_by_category']['junction_box']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
                     else:
                         results['metrics_by_category']['junction_box']['missing'].append(metric)
-                        log_step(f"✗ {metric}: NON RICEVUTA", False)
-                
-                log_step("=== Sensori di Tiro ===")
+                        log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
+
+                # Sensori di Tiro
+                log_step("=== ⚡ Sensori di Tiro ===")
                 for metric in metrics_def['load']:
+                    sens_name = self.load_metrics_mapping.get(metric, metric)
                     if metric in received_metrics:
                         results['metrics_by_category']['load']['found'].append(metric)
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
-                            log_step(f"✓ {metric}: {latest['value']} (fonte: {latest['source']})")
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}")
                     else:
                         results['metrics_by_category']['load']['missing'].append(metric)
-                        log_step(f"✗ {metric}: NON RICEVUTA", False)
+                        log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
             
             # Calcola totali finali
             missing_metrics = []
@@ -893,6 +1026,14 @@ class DigilTestService:
             results['total_expected'] = len(required_alarms)
             results['total_found'] = len(found_alarms)
             results['success'] = len(missing_alarms) == 0
+            results['missing_alarms_friendly'] = [
+                f"{alarm} ({self.alarm_mapping.get(alarm, alarm)})" 
+                for alarm in missing_alarms
+            ]
+            results['other_alarms_friendly'] = {
+                f"{key} ({self.alarm_mapping.get(key, 'Sconosciuto')})": value 
+                for key, value in other_alarms.items()
+            }
 
             if results['success']:
                 log_step(f"✅ Test superato! Tutti gli allarmi ricevuti ({results['total_found']}/{results['total_expected']})")
