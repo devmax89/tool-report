@@ -222,30 +222,46 @@ function updateTimer() {
 // Funzioni per metriche
 function addFoundMetric(data) {
     const foundDiv = document.getElementById('foundMetrics');
-    const itemDiv = document.createElement('div');
-    itemDiv.className = 'item found';
     
     // Determina la categoria della metrica
     let category = '📊';
     if (window.metricCategories) {
         if (window.metricCategories.weather.includes(data.metric_type)) {
-            category = '🌤️'; // Centralina Meteo
+            category = '🌤️';
         } else if (window.metricCategories.junctionBox.includes(data.metric_type)) {
-            category = '📦'; // Smart Junction Box
+            category = '📦';
         } else if (window.metricCategories.load.includes(data.metric_type)) {
-            category = '⚡'; // Sensori di Tiro
+            category = '⚡';
         }
     }
     
-    // Mostra anche la fonte se disponibile
     const sourceIcon = data.source === 'lastval' ? '📌' : '📡';
-    const sourceText = data.source ? ` [${sourceIcon} ${data.source}]` : '';
     
-    itemDiv.innerHTML = `
-        <strong>${category} ${data.metric_type}${sourceText}</strong><br>
-        📍 ${data.timestamp} - Valore: ${data.value}
-    `;
-    foundDiv.appendChild(itemDiv);
+    // Controlla se la metrica esiste già
+    let existingItem = document.getElementById(`metric-${data.metric_type}`);
+    
+    if (existingItem) {
+        // Aggiorna l'elemento esistente
+        existingItem.innerHTML = `
+            <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
+            📍 ${data.timestamp} - Valore: ${data.value}
+        `;
+        // Flash per indicare aggiornamento
+        existingItem.style.backgroundColor = '#ccffcc';
+        setTimeout(() => {
+            existingItem.style.backgroundColor = '';
+        }, 500);
+    } else {
+        // Crea nuovo elemento
+        const itemDiv = document.createElement('div');
+        itemDiv.id = `metric-${data.metric_type}`;
+        itemDiv.className = 'item found';
+        itemDiv.innerHTML = `
+            <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
+            📍 ${data.timestamp} - Valore: ${data.value}
+        `;
+        foundDiv.appendChild(itemDiv);
+    }
     
     foundMetricsData[data.metric_type] = data;
 }
@@ -274,16 +290,33 @@ function updateWaitingMetrics(missingList) {
 // Funzioni per allarmi
 function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
-    const itemDiv = document.createElement('div');
-    itemDiv.className = 'item found';
-    
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
     
-    itemDiv.innerHTML = `
-        <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-        📍 ${data.timestamp} - Valore: ${data.value}
-    `;
-    foundDiv.appendChild(itemDiv);
+    // Controlla se l'allarme esiste già
+    let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
+    
+    if (existingItem) {
+        // Aggiorna l'elemento esistente
+        existingItem.innerHTML = `
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
+            📍 ${data.timestamp} - Valore: ${data.value}
+        `;
+        // Flash per indicare aggiornamento
+        existingItem.style.backgroundColor = '#ffffcc';
+        setTimeout(() => {
+            existingItem.style.backgroundColor = '';
+        }, 500);
+    } else {
+        // Crea nuovo elemento
+        const itemDiv = document.createElement('div');
+        itemDiv.id = `alarm-${data.alarm_type}`;
+        itemDiv.className = 'item found';
+        itemDiv.innerHTML = `
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
+            📍 ${data.timestamp} - Valore: ${data.value}
+        `;
+        foundDiv.appendChild(itemDiv);
+    }
     
     foundAlarmsData[data.alarm_type] = data;
 }

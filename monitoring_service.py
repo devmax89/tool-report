@@ -44,7 +44,25 @@ class AlarmMonitor:
         start_time = datetime.now()
         timeout = timedelta(minutes=timeout_minutes)
         check_interval = 5
-        last_aggregated_check = None  # Per evitare chiamate troppo frequenti all'API aggregata
+        last_aggregated_check = None
+        
+        # Aggiungi questa riga per avere accesso alla mappatura degli allarmi
+        alarm_mapping = {
+            'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
+            'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
+            'EGM_OUT_SENS_23_VAR_34': 'TC_F12B_L1',
+            'EGM_OUT_SENS_23_VAR_35': 'TC_F12B_L2',
+            'EGM_OUT_SENS_23_VAR_36': 'TC_F4A_L1',
+            'EGM_OUT_SENS_23_VAR_37': 'TC_F4A_L2',
+            'EGM_OUT_SENS_23_VAR_38': 'TC_F4B_L1',
+            'EGM_OUT_SENS_23_VAR_39': 'TC_F4B_L2',
+            'EGM_OUT_SENS_23_VAR_40': 'TC_F8A_L1',
+            'EGM_OUT_SENS_23_VAR_41': 'TC_F8A_L2',
+            'EGM_OUT_SENS_23_VAR_42': 'TC_F8B_L1',
+            'EGM_OUT_SENS_23_VAR_43': 'TC_F8B_L2',
+            'EGM_OUT_SENS_23_VAR_30': 'Inc_X',
+            'EGM_OUT_SENS_23_VAR_31': 'Inc_Y'
+        }
         
         # Dati per metriche
         found_metrics = {}
@@ -97,35 +115,42 @@ class AlarmMonitor:
                 success_tm, tm_data = digil_test_service.get_telemetry_data(
                     device_id, ui, start_timestamp, end_timestamp
                 )
-                
+
                 if success_tm and 'tm' in tm_data and tm_data['tm']:
                     for tm_entry in tm_data['tm']:
+                        # Converti timestamp del pacchetto
+                        packet_timestamp = tm_entry.get('timestamp', 0) / 1000
+                        packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
+                        
                         if 'metrics' in tm_entry:
                             for metric in tm_entry['metrics']:
                                 metric_type = metric.get('metricType', '')
                                 metric_val = metric.get('val', '')
                                 
                                 if metric_type in expected_metrics and metric_type not in found_metrics:
-                                    timestamp = datetime.now().strftime('%H:%M:%S')
                                     found_metrics[metric_type] = metric_val
                                     
                                     metric_entry = {
                                         'metric_type': metric_type,
                                         'value': metric_val,
-                                        'timestamp': timestamp,
+                                        'timestamp': packet_time,  # Usa timestamp del pacchetto
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'telemetry'
                                     }
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
-                
+
                 # Check 2: Lastval per metriche mancanti E allarmi
                 success_lv, lastval_data = digil_test_service.get_lastval_data(device_id, ui)
-                
+
                 if success_lv and 'lastVal' in lastval_data:
                     current_received_alarms = {}
                     
                     for entry in lastval_data.get('lastVal', []):
+                        # Converti timestamp del pacchetto
+                        packet_timestamp = entry.get('timestamp', 0) / 1000
+                        packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
+                        
                         if 'metrics' in entry:
                             for metric in entry['metrics']:
                                 metric_type = metric.get('metricType', '')
@@ -133,13 +158,12 @@ class AlarmMonitor:
                                 
                                 # Controlla se è una metrica mancante
                                 if metric_type in expected_metrics and metric_type not in found_metrics:
-                                    timestamp = datetime.now().strftime('%H:%M:%S')
                                     found_metrics[metric_type] = metric_val
                                     
                                     metric_entry = {
                                         'metric_type': metric_type,
                                         'value': metric_val,
-                                        'timestamp': timestamp,
+                                        'timestamp': packet_time,  # Usa timestamp del pacchetto
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'lastval'
                                     }
@@ -175,50 +199,56 @@ class AlarmMonitor:
                                         }, room=sid)
                             expected_alarms = new_expected
                     
-                    # Processa allarmi
-                    for metric_type, metric_val in current_received_alarms.items():
-                        timestamp = datetime.now().strftime('%H:%M:%S')
+                    # Processa allarmi con timestamp del pacchetto
+                    for entry in lastval_data.get('lastVal', []):
+                        packet_timestamp = entry.get('timestamp', 0) / 1000
+                        packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
                         
-                        if metric_type in expected_alarms:
-                            if metric_type not in found_alarms:
-                                found_alarms[metric_type] = metric_val
-                                alarm_entry = {
-                                    'alarm_type': metric_type,
-                                    'value': metric_val,
-                                    'timestamp': timestamp,
-                                    'elapsed': str(elapsed).split('.')[0],
-                                    'is_expected': True
-                                }
-                                event_history.append(('alarm', alarm_entry))
-                                self.socketio.emit('alarm_found', alarm_entry, room=sid)
-                        else:
-                            if metric_type not in other_alarms:
-                                other_alarms[metric_type] = metric_val
-                                other_alarm_entry = {
-                                    'alarm_type': metric_type,
-                                    'value': metric_val,
-                                    'timestamp': timestamp,
-                                    'elapsed': str(elapsed).split('.')[0],
-                                    'is_expected': False
-                                }
-                                event_history.append(('other_alarm', other_alarm_entry))
-                                self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
-                
+                        if 'metrics' in entry:
+                            for metric in entry['metrics']:
+                                metric_type = metric.get('metricType', '')
+                                metric_val = metric.get('val', '')
+                                
+                                if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
+                                    if metric_type in expected_alarms:
+                                        if metric_type not in found_alarms:
+                                            found_alarms[metric_type] = metric_val
+                                            alarm_entry = {
+                                                'alarm_type': metric_type,
+                                                'value': metric_val,
+                                                'timestamp': packet_time,  # Usa timestamp del pacchetto
+                                                'elapsed': str(elapsed).split('.')[0],
+                                                'is_expected': True
+                                            }
+                                            event_history.append(('alarm', alarm_entry))
+                                            self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                    else:
+                                        if metric_type not in other_alarms:
+                                            other_alarms[metric_type] = metric_val
+                                            other_alarm_entry = {
+                                                'alarm_type': metric_type,
+                                                'value': metric_val,
+                                                'timestamp': packet_time,  # Usa timestamp del pacchetto
+                                                'elapsed': str(elapsed).split('.')[0],
+                                                'is_expected': False
+                                            }
+                                            event_history.append(('other_alarm', other_alarm_entry))
+                                            self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
+
                 # Check 3: API aggregata come fallback (solo ogni 30 secondi e dopo almeno 1 minuto)
                 missing_metrics = [m for m in expected_metrics if m not in found_metrics]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
-                
+
                 should_check_aggregated = (
                     (missing_metrics or missing_alarms) and
-                    elapsed.total_seconds() > 60 and  # Dopo almeno 1 minuto
+                    elapsed.total_seconds() > 60 and
                     (last_aggregated_check is None or 
-                    (current_time - last_aggregated_check).total_seconds() > 30)  # Ogni 30 secondi max
+                    (current_time - last_aggregated_check).total_seconds() > 30)
                 )
-                
+
                 if should_check_aggregated:
                     last_aggregated_check = current_time
                     
-                    # Chiamata API aggregata
                     success_agg, agg_data = digil_test_service.get_device_aggregated_data(device_id)
                     
                     if success_agg and 'measures' in agg_data:
@@ -230,9 +260,10 @@ class AlarmMonitor:
                                 eit_metric = digil_test_service.reverse_metrics_mapping[measure_key]
                                 
                                 if eit_metric in missing_metrics and measure_data and isinstance(measure_data, dict) and len(measure_data) > 0:
-                                    timestamp = datetime.now().strftime('%H:%M:%S')
+                                    # Estrai timestamp dalla misura
+                                    measure_timestamp = measure_data.get('timestamp', 0) / 1000
+                                    measure_time = datetime.fromtimestamp(measure_timestamp).strftime('%H:%M:%S')
                                     
-                                    # Estrai valore
                                     if 'avg' in measure_data:
                                         value = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
                                     elif 'value' in measure_data:
@@ -245,7 +276,7 @@ class AlarmMonitor:
                                     metric_entry = {
                                         'metric_type': eit_metric,
                                         'value': value,
-                                        'timestamp': timestamp,
+                                        'timestamp': measure_time,  # Usa il timestamp della misura
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'aggregated'
                                     }
@@ -274,13 +305,16 @@ class AlarmMonitor:
                             if alarm_key in missing_alarms and measure_key in measures:
                                 measure_data = measures[measure_key]
                                 if measure_data and 'value' in measure_data:
-                                    timestamp = datetime.now().strftime('%H:%M:%S')
+                                    # Estrai timestamp dalla misura
+                                    measure_timestamp = measure_data.get('timestamp', 0) / 1000
+                                    measure_time = datetime.fromtimestamp(measure_timestamp).strftime('%H:%M:%S')
+                                    
                                     found_alarms[alarm_key] = measure_data['value']
                                     
                                     alarm_entry = {
                                         'alarm_type': alarm_key,
                                         'value': measure_data['value'],
-                                        'timestamp': timestamp,
+                                        'timestamp': measure_time,  # Usa il timestamp della misura
                                         'elapsed': str(elapsed).split('.')[0],
                                         'is_expected': True,
                                         'source': 'aggregated'
