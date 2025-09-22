@@ -256,55 +256,46 @@
                 if (data.success) {
                     html = `
                         <div class="alert alert-success">
-                            <h5>✅ Test Allarmi Completato - SUPERATO</h5>
+                            <h5>✅ Test Downlink Completato - SUPERATO</h5>
                             <p><strong>Device:</strong> ${deviceId}</p>
-                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                            ${data.alarm_values && Object.keys(data.alarm_values).length > 0 ? `
-                                <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Valori allarmi attesi</summary>
-                                    <ul style="margin-top: 10px;">
-                                        ${Object.entries(data.alarm_values).map(([key, val]) => {
-                                            const friendlyName = alarmNames[key] || key;
-                                            return `<li><strong>${key} - ${friendlyName}:</strong> ${val}</li>`;
-                                        }).join('')}
-                                    </ul>
-                                </details>
-                            ` : ''}
-                            ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
-                                <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
-                                    <ul style="margin-top: 10px;">
-                                        ${Object.entries(data.other_alarms).map(([key, val]) => {
-                                            const friendlyName = alarmNames[key] || key;
-                                            return `<li><strong>${key} - ${friendlyName}:</strong> ${val}</li>`;
-                                        }).join('')}
-                                    </ul>
-                                </details>
-                            ` : ''}
+                            <p><strong>Durata:</strong> ${data.duration ? data.duration.toFixed(1) : 'N/A'} secondi</p>
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer;">📋 Dettagli steps</summary>
+                                <ul style="margin-top: 10px; list-style: none; padding-left: 0;">
+                                    ${data.steps ? data.steps.map(s => `
+                                        <li style="padding: 5px 0; border-bottom: 1px solid #c3e6cb;">
+                                            <span style="color: #6c757d; font-size: 0.9em;">${s.timestamp}</span> - 
+                                            <strong>${s.step}:</strong> 
+                                            ${s.success ? 
+                                                '<span style="color: #28a745;">✓</span>' : 
+                                                '<span style="color: #dc3545;">✗</span>'} 
+                                            ${s.message}
+                                        </li>
+                                    `).join('') : '<li>Nessun dettaglio disponibile</li>'}
+                                </ul>
+                            </details>
                         </div>
                     `;
-                } else {  // RIMOSSA LA PARENTESI GRAFFA DI TROPPO
+                } else {
                     html = `
-                        <div class="alert alert-warning">
-                            <h5>⚠️ Test Allarmi - ALLARMI MANCANTI</h5>
+                        <div class="alert alert-danger">
+                            <h5>❌ Test Downlink Fallito</h5>
                             <p><strong>Device:</strong> ${deviceId}</p>
-                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Allarmi mancanti:</strong> ${data.missing_alarms ? 
-                                data.missing_alarms.map(alarm => {
-                                    const friendlyName = alarmNames[alarm] || alarm;
-                                    return `${friendlyName}`;
-                                }).join(', ') : 
-                                'N/A'}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
-                            ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
+                            <p><strong>Errore:</strong> ${data.error || 'Errore sconosciuto'}</p>
+                            ${data.steps && data.steps.length > 0 ? `
                                 <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
-                                    <ul style="margin-top: 10px;">
-                                        ${Object.entries(data.other_alarms).map(([key, val]) => {
-                                            const friendlyName = alarmNames[key] || key;
-                                            return `<li><strong>${key} - ${friendlyName}:</strong> ${val}</li>`;
-                                        }).join('')}
+                                    <summary style="cursor: pointer;">📋 Dettagli steps</summary>
+                                    <ul style="margin-top: 10px; list-style: none; padding-left: 0;">
+                                        ${data.steps.map(s => `
+                                            <li style="padding: 5px 0; border-bottom: 1px solid #f5c6cb;">
+                                                <span style="color: #6c757d; font-size: 0.9em;">${s.timestamp}</span> - 
+                                                <strong>${s.step}:</strong> 
+                                                ${s.success ? 
+                                                    '<span style="color: #28a745;">✓</span>' : 
+                                                    '<span style="color: #dc3545;">✗</span>'} 
+                                                ${s.message}
+                                            </li>
+                                        `).join('')}
                                     </ul>
                                 </details>
                             ` : ''}
@@ -364,50 +355,58 @@
                 if (data.success) {
                     html = `
                         <div class="alert alert-success">
-                            <h5>✅ Test Allarmi Completato - SUPERATO</h5>
+                            <h5>✅ Test Metriche Completato - SUPERATO</h5>
                             <p><strong>Device:</strong> ${deviceId}</p>
-                            <p><strong>Allarmi trovati:</strong> ${data.total_found}/${data.total_expected}</p>
-                            <p><strong>Range temporale:</strong> Ultimi ${timeRange} minuti</p>
+                            <p><strong>Metriche trovate:</strong> ${data.total_found}/${data.total_expected}</p>
+                            <p><strong>Letture totali:</strong> ${data.total_readings || 'N/A'}</p>
+                            <p><strong>Prima lettura:</strong> ${data.first_reading || 'N/A'}</p>
+                            <p><strong>Ultima lettura:</strong> ${data.last_reading || 'N/A'}</p>
                             
-                            <!-- Aggiungi sempre i dettagli degli allarmi trovati -->
-                            ${data.found_alarms && data.found_alarms.length > 0 ? `
+                            ${data.metrics_by_category ? `
                                 <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Allarmi verificati</summary>
+                                    <summary style="cursor: pointer;">🌤️ Stazione Meteo (${data.metrics_by_category.weather.found.length}/5)</summary>
                                     <ul style="margin-top: 10px;">
-                                        ${data.found_alarms.map(alarm => {
-                                            const friendlyName = alarmNames[alarm] || alarm;
-                                            const value = data.alarm_values ? data.alarm_values[alarm] : 'N/A';
-                                            return `<li><strong>${alarm} - ${friendlyName}:</strong> ${value}</li>`;
-                                        }).join('')}
+                                        ${data.metrics_by_category.weather.found.length > 0 ? 
+                                            `<li><strong>Trovate:</strong><br>${data.metrics_by_category.weather.found.map(m => `• ${m}`).join('<br>')}</li>` : 
+                                            '<li>Nessuna metrica trovata</li>'}
+                                        ${data.metrics_by_category.weather.missing.length > 0 ? 
+                                            `<li style="margin-top: 10px;"><strong>Mancanti:</strong><br>${data.metrics_by_category.weather.missing.map(m => `• ${m}`).join('<br>')}</li>` : ''}
+                                    </ul>
+                                </details>
+                                
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">📦 Smart Junction Box (${data.metrics_by_category.junction_box.found.length}/5)</summary>
+                                    <ul style="margin-top: 10px;">
+                                        ${data.metrics_by_category.junction_box.found.length > 0 ? 
+                                            `<li><strong>Trovate:</strong><br>${data.metrics_by_category.junction_box.found.map(m => `• ${m}`).join('<br>')}</li>` : 
+                                            '<li>Nessuna metrica trovata</li>'}
+                                        ${data.metrics_by_category.junction_box.missing.length > 0 ? 
+                                            `<li style="margin-top: 10px;"><strong>Mancanti:</strong><br>${data.metrics_by_category.junction_box.missing.map(m => `• ${m}`).join('<br>')}</li>` : ''}
+                                    </ul>
+                                </details>
+                                
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">⚡ Sensori di Tiro (${data.metrics_by_category.load.found.length}/${numSensors == '3' ? 3 : numSensors == '6' ? 6 : 12})</summary>
+                                    <ul style="margin-top: 10px;">
+                                        ${data.metrics_by_category.load.found.length > 0 ? 
+                                            `<li><strong>Trovate:</strong><br>${data.metrics_by_category.load.found.map(m => `• ${m}`).join('<br>')}</li>` : 
+                                            '<li>Nessuna metrica trovata</li>'}
+                                        ${data.metrics_by_category.load.missing.length > 0 ? 
+                                            `<li style="margin-top: 10px;"><strong>Mancanti:</strong><br>${data.metrics_by_category.load.missing.map(m => `• ${m}`).join('<br>')}</li>` : ''}
                                     </ul>
                                 </details>
                             ` : ''}
                             
-                            ${data.other_alarms && Object.keys(data.other_alarms).length > 0 ? `
-                                <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Altri allarmi trovati (non verificati)</summary>
-                                    <ul style="margin-top: 10px;">
-                                        ${Object.entries(data.other_alarms).map(([key, val]) => {
-                                            const friendlyName = alarmNames[key] || key;
-                                            return `<li><strong>${key} - ${friendlyName}:</strong> ${val}</li>`;
-                                        }).join('')}
-                                    </ul>
-                                </details>
-                            ` : ''}
-                            
-                            <!-- Aggiungi dettagli completi se disponibili -->
-                            ${data.details && data.details.length > 0 ? `
-                                <details style="margin-top: 15px;">
-                                    <summary style="cursor: pointer;">Log completo del test</summary>
-                                    <div style="margin-top: 10px; max-height: 300px; overflow-y: auto;">
-                                        ${data.details.map(d => `
-                                            <div style="padding: 3px 0; font-size: 0.9em; ${!d.success ? 'color: red;' : ''}">
-                                                <span style="color: #6c757d;">${d.timestamp}</span> - ${d.message}
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </details>
-                            ` : ''}
+                            <details style="margin-top: 15px;">
+                                <summary style="cursor: pointer;">📋 Log completo del test</summary>
+                                <div style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">
+                                    ${data.details.map(d => `
+                                        <div style="padding: 3px 0; font-size: 0.9em; ${!d.success ? 'color: #dc3545;' : 'color: #28a745;'}">
+                                            <span style="color: #6c757d;">${d.timestamp}</span> - ${d.message}
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </details>
                         </div>
                     `;
                 } else {
@@ -417,11 +416,38 @@
                             <p><strong>Device:</strong> ${deviceId}</p>
                             <p><strong>Metriche trovate:</strong> ${data.total_found}/${data.total_expected}</p>
                             <p><strong>Metriche mancanti:</strong> ${data.missing_metrics ? data.missing_metrics.join(', ') : 'N/A'}</p>
+                            
+                            ${data.metrics_by_category ? `
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">🌤️ Stazione Meteo</summary>
+                                    <ul style="margin-top: 10px;">
+                                        <li><strong>Trovate:</strong> ${data.metrics_by_category.weather.found.join(', ') || 'Nessuna'}</li>
+                                        <li><strong>Mancanti:</strong> ${data.metrics_by_category.weather.missing.join(', ') || 'Nessuna'}</li>
+                                    </ul>
+                                </details>
+                                
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">📦 Smart Junction Box</summary>
+                                    <ul style="margin-top: 10px;">
+                                        <li><strong>Trovate:</strong> ${data.metrics_by_category.junction_box.found.join(', ') || 'Nessuna'}</li>
+                                        <li><strong>Mancanti:</strong> ${data.metrics_by_category.junction_box.missing.join(', ') || 'Nessuna'}</li>
+                                    </ul>
+                                </details>
+                                
+                                <details style="margin-top: 15px;">
+                                    <summary style="cursor: pointer;">⚡ Sensori di Tiro</summary>
+                                    <ul style="margin-top: 10px;">
+                                        <li><strong>Trovate:</strong> ${data.metrics_by_category.load.found.join(', ') || 'Nessuna'}</li>
+                                        <li><strong>Mancanti:</strong> ${data.metrics_by_category.load.missing.join(', ') || 'Nessuna'}</li>
+                                    </ul>
+                                </details>
+                            ` : ''}
+                            
                             <details style="margin-top: 15px;">
-                                <summary style="cursor: pointer;">Dettagli completi</summary>
-                                <div style="margin-top: 10px;">
+                                <summary style="cursor: pointer;">📋 Log completo del test</summary>
+                                <div style="margin-top: 10px; max-height: 300px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px;">
                                     ${data.details ? data.details.map(d => `
-                                        <div style="padding: 3px 0; ${!d.success ? 'color: red;' : ''}">
+                                        <div style="padding: 3px 0; font-size: 0.9em; ${!d.success ? 'color: red;' : ''}">
                                             ${d.timestamp} - ${d.message}
                                         </div>
                                     `).join('') : 'Nessun dettaglio'}

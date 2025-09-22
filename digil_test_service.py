@@ -691,78 +691,84 @@ class DigilTestService:
             
             # TERZA CHIAMATA: API aggregata per metriche ancora mancanti
             final_missing = [m for m in expected_metrics if m not in received_metrics]
-            
+
+            # Inizializza variabili per evitare errori
+            success_agg = False
+            agg_data = {}
+
             if final_missing:
                 log_step(f"⚠️ Ancora {len(final_missing)} metriche mancanti dopo tm+lastval")
                 log_step(f"📊 Tentativo con API aggregata di fallback...")
                 
                 success_agg, agg_data = self.get_device_aggregated_data(device_id)
                 
-            if success_agg and 'measures' in agg_data:
-                measures = agg_data['measures']
-                log_step(f"   Trovate {len(measures)} measures nell'API aggregata")
-                
-                # Debug: mostra alcune measures
-                measure_samples = list(measures.keys())[:5]
-                log_step(f"   Esempi di measures: {measure_samples}")
-                
-                # Conta quante measures sono vuote
-                empty_measures = [k for k, v in measures.items() if not v or v == {}]
-                if empty_measures:
-                    log_step(f"   ⚠️ {len(empty_measures)} measures sono vuote")
-                
-                # Analisi dati aggregati per metriche mancanti
-                metrics_found_from_aggregated = 0
-                
-                # Usa il reverse mapping per convertire da SENS_Digil2 a EIT
-                for measure_key, measure_data in measures.items():
-                    # Controlla se questa misura corrisponde a una metrica mancante
-                    if measure_key in self.reverse_metrics_mapping:
-                        eit_metric = self.reverse_metrics_mapping[measure_key]
-                        
-                        if eit_metric in final_missing:
-                            # Debug per vedere cosa c'è in measure_data
-                            if not measure_data or measure_data == {}:
-                                log_step(f"   ⚠️ {measure_key} → {eit_metric}: vuoto, skip")
-                                continue
+                if success_agg and 'measures' in agg_data:
+                    measures = agg_data['measures']
+                    log_step(f"   Trovate {len(measures)} measures nell'API aggregata")
+                    
+                    # Debug: mostra alcune measures
+                    measure_samples = list(measures.keys())[:5]
+                    log_step(f"   Esempi di measures: {measure_samples}")
+                    
+                    # Conta quante measures sono vuote
+                    empty_measures = [k for k, v in measures.items() if not v or v == {}]
+                    if empty_measures:
+                        log_step(f"   ⚠️ {len(empty_measures)} measures sono vuote")
+                    
+                    # Analisi dati aggregati per metriche mancanti
+                    metrics_found_from_aggregated = 0
+                    
+                    # Usa il reverse mapping per convertire da SENS_Digil2 a EIT
+                    for measure_key, measure_data in measures.items():
+                        # Controlla se questa misura corrisponde a una metrica mancante
+                        if measure_key in self.reverse_metrics_mapping:
+                            eit_metric = self.reverse_metrics_mapping[measure_key]
                             
-                            # Verifica che ci siano dati validi
-                            if isinstance(measure_data, dict) and len(measure_data) > 0:
-                                received_metrics.add(eit_metric)
-                                metrics_found_from_aggregated += 1
+                            if eit_metric in final_missing:
+                                # Debug per vedere cosa c'è in measure_data
+                                if not measure_data or measure_data == {}:
+                                    log_step(f"   ⚠️ {measure_key} → {eit_metric}: vuoto, skip")
+                                    continue
                                 
-                                # Gestisci diversi formati di dati
-                                if 'avg' in measure_data:
-                                    # Dati con min/avg/max (sensori di tiro, accelerometri, etc.)
-                                    value_str = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
-                                elif 'value' in measure_data:
-                                    # Dati con valore singolo (temperatura, batteria, etc.)
-                                    value_str = str(measure_data.get('value', 'N/A'))
-                                else:
-                                    log_step(f"   ⚠️ {measure_key}: formato dati non riconosciuto")
-                                    continue  # Skip se non ci sono dati validi
-                                
-                                if eit_metric not in metric_values:
-                                    metric_values[eit_metric] = []
-                                
-                                metric_values[eit_metric].append({
-                                    'name': eit_metric,
-                                    'value': value_str,
-                                    'timestamp': measure_data.get('timestamp', 'N/A'),
-                                    'source': 'aggregated-fallback'
-                                })
-                                
-                                log_step(f"   ✓ Recuperata {eit_metric} ({measure_key}): {value_str} [da API aggregata]")
-                
-                if metrics_found_from_aggregated == 0:
-                    log_step(f"   ⚠️ Nessuna metrica mancante recuperata dall'API aggregata")
+                                # Verifica che ci siano dati validi
+                                if isinstance(measure_data, dict) and len(measure_data) > 0:
+                                    received_metrics.add(eit_metric)
+                                    metrics_found_from_aggregated += 1
+                                    
+                                    # Gestisci diversi formati di dati
+                                    if 'avg' in measure_data:
+                                        # Dati con min/avg/max (sensori di tiro, accelerometri, etc.)
+                                        value_str = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
+                                    elif 'value' in measure_data:
+                                        # Dati con valore singolo (temperatura, batteria, etc.)
+                                        value_str = str(measure_data.get('value', 'N/A'))
+                                    else:
+                                        log_step(f"   ⚠️ {measure_key}: formato dati non riconosciuto")
+                                        continue  # Skip se non ci sono dati validi
+                                    
+                                    if eit_metric not in metric_values:
+                                        metric_values[eit_metric] = []
+                                    
+                                    metric_values[eit_metric].append({
+                                        'name': eit_metric,
+                                        'value': value_str,
+                                        'timestamp': measure_data.get('timestamp', 'N/A'),
+                                        'source': 'aggregated-fallback'
+                                    })
+                                    
+                                    log_step(f"   ✓ Recuperata {eit_metric} ({measure_key}): {value_str} [da API aggregata]")
+                    
+                    if metrics_found_from_aggregated == 0:
+                        log_step(f"   ⚠️ Nessuna metrica mancante recuperata dall'API aggregata")
+                    else:
+                        log_step(f"   ✓ Recuperate {metrics_found_from_aggregated} metriche dall'API aggregata")
                 else:
-                    log_step(f"   ✓ Recuperate {metrics_found_from_aggregated} metriche dall'API aggregata")
+                    if not success_agg:
+                        log_step(f"   ✗ API aggregata fallita: {agg_data}", False)
+                    else:
+                        log_step(f"   ✗ API aggregata senza measures", False)
             else:
-                if not success_agg:
-                    log_step(f"   ✗ API aggregata fallita: {agg_data}", False)
-                else:
-                    log_step(f"   ✗ API aggregata senza measures", False)
+                log_step("✅ Tutte le metriche trovate dalla telemetria!")
             
             # Mostra risultati per categoria
             if isinstance(metrics_def, dict):
