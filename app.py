@@ -279,16 +279,14 @@ def create_excel_report(data):
     
     # Gestisce percorsi sia per sviluppo che per exe
     if getattr(sys, 'frozen', False):
-        # Se è un exe, usa il percorso temporaneo di PyInstaller
         base_path = sys._MEIPASS
     else:
-        # Se è in sviluppo, usa il percorso normale
         base_path = os.path.dirname(os.path.abspath(__file__))
     
     # Carica il template appropriato
     template_path = os.path.join(base_path, "templates_excel", f"esempio_{data['num_sensors']:02d}.xlsx")
     
-    print(f"Cercando template in: {template_path}")  # Debug
+    print(f"Cercando template in: {template_path}")
     
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"Template non trovato: {template_path}")
@@ -313,15 +311,25 @@ def create_excel_report(data):
         'end_time': data['end_time']
     }
     
-    # Aggiorna ogni sheet
+    # NUOVO: Rimuovi sheet Downlink se disabilitato
+    enable_downlink = data.get('enable_downlink', True)  # Default True per retrocompatibilità
+    
+    if not enable_downlink:
+        # Trova e rimuovi tutti gli sheet che contengono "Downlink" nel nome
+        sheets_to_remove = [sheet for sheet in wb.sheetnames if 'Downlink' in sheet]
+        for sheet_name in sheets_to_remove:
+            print(f"🗑️ Rimozione sheet: {sheet_name} (Downlink disabilitato)")
+            del wb[sheet_name]
+    
+    # Aggiorna ogni sheet rimanente
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         
         # Aggiorna parametri comuni
         update_common_parameters(ws, common_data)
         
-        # Aggiornamenti specifici per Downlink
-        if "Downlink" in sheet_name:
+        # Aggiornamenti specifici per Downlink (solo se abilitato)
+        if enable_downlink and "Downlink" in sheet_name:
             update_downlink_parameters(ws, transformed_device_id, common_data)
     
     return wb
@@ -345,8 +353,11 @@ def generate_report():
             'end_date': request.form['end_date'],
             'end_time': request.form['end_time'],
             'vendor': request.form['vendor'],
-            'device_id': request.form['device_id']
+            'device_id': request.form['device_id'],
+            'enable_downlink': request.form.get('enable_downlink') == 'on'
         }
+
+        print(f"📋 Generazione report con Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
         
         # Controlla se inviare email
         send_email = request.form.get('send_email') == 'on'
@@ -475,7 +486,8 @@ def preview_report():
             'device_id': request.form['device_id'],
             'vendor': request.form['vendor'],
             'start_date': request.form['start_date'],
-            'start_time': request.form['start_time']
+            'start_time': request.form['start_time'],
+            'enable_downlink': request.form.get('enable_downlink') == 'on'
         }
         
         # Formatta la data

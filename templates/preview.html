@@ -11,6 +11,14 @@
                     <li><strong>Vendor:</strong> {{ data.vendor }}</li>
                     <li><strong>Device ID:</strong> {{ data.device_id }}</li>
                     <li><strong>Data Test:</strong> {{ data.start_date_formatted }}</li>
+                    <!-- NUOVO: Mostra stato Downlink -->
+                    <li><strong>Scenario Downlink:</strong> 
+                        {% if data.enable_downlink %}
+                            <span style="color: #28a745;">✅ Abilitato</span>
+                        {% else %}
+                            <span style="color: #dc3545;">❌ Disabilitato</span>
+                        {% endif %}
+                    </li>
                 </ul>
             </div>
             <div class="preview-section">
@@ -25,7 +33,12 @@
         </div>
         
         <div class="alert alert-success">
-            ✅ Configurazione valida! Il report conterrà 4 sheet con tutti i parametri aggiornati automaticamente.
+            ✅ Configurazione valida! Il report conterrà 
+            {% if data.enable_downlink %}
+                4 sheet con tutti i parametri aggiornati automaticamente.
+            {% else %}
+                3 sheet (Downlink escluso) con tutti i parametri aggiornati automaticamente.
+            {% endif %}
         </div>
     </div>
 </div>

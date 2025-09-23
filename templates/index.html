@@ -151,6 +151,23 @@
                         </select>
                         <div class="form-text">Seleziona l'UI dove si trova il dispositivo (necessaria per test metriche)</div>
                     </div>
+                    
+                    <!-- Colonna destra: Switch Downlink -->
+                    <div style="flex: 0 0 auto; margin-top: 25px;">
+                        <div style="display: flex; align-items: center; gap: 10px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e1e8ed;">
+                            <label class="switch-label" style="margin: 0; white-space: nowrap; font-weight: 500;">
+                                Scenario Downlink:
+                            </label>
+                            <div class="form-check form-switch" style="margin: 0;">
+                                <input class="form-check-input" type="checkbox" id="enable_downlink" name="enable_downlink" checked 
+                                    style="cursor: pointer; width: 50px; height: 25px; margin: 0;">
+                                <label class="form-check-label" for="enable_downlink" id="downlink_status" 
+                                    style="margin-left: 10px; font-weight: bold; color: #28a745; margin-bottom: 0;">
+                                    Abilitato
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -202,29 +219,7 @@
         </div>
     </div>
 
-    <script>
-        function showPreview() {
-            const form = document.getElementById('reportForm');
-            const formData = new FormData(form);
-            
-            // Mostra loading
-            const previewDiv = document.getElementById('preview');
-            previewDiv.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Caricamento anteprima...</div>';
-            previewDiv.style.display = 'block';
-            
-            fetch('/preview', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.text())
-            .then(html => {
-                previewDiv.innerHTML = html;
-            })
-            .catch(error => {
-                previewDiv.innerHTML = '<div class="alert alert-danger">Errore nel caricamento dell\'anteprima</div>';
-            });
-        }
-        
+    <script>    
         function runDownlinkTest() {
             const deviceId = document.getElementById('device_id').value;
             
@@ -680,6 +675,50 @@
             const emailOptions = document.getElementById('email_options');
             emailOptions.style.display = this.checked ? 'block' : 'none';
         });
+        
+        // Toggle label per Downlink
+        document.getElementById('enable_downlink').addEventListener('change', function() {
+            const statusLabel = document.getElementById('downlink_status');
+            if (this.checked) {
+                statusLabel.textContent = 'Abilitato';
+                statusLabel.style.color = '#28a745';
+            } else {
+                statusLabel.textContent = 'Disabilitato';
+                statusLabel.style.color = '#dc3545';
+            }
+        });
+        
+        function showPreview() {
+            const form = document.getElementById('reportForm');
+            const formData = new FormData(form);
+            
+            const downlinkCheckbox = document.getElementById('enable_downlink');
+            if (downlinkCheckbox) {
+                // Rimuovi eventuale valore esistente
+                formData.delete('enable_downlink');
+                // Aggiungi il valore corretto
+                if (downlinkCheckbox.checked) {
+                    formData.append('enable_downlink', 'on');
+                }
+            }
+            
+            // Mostra loading
+            const previewDiv = document.getElementById('preview');
+            previewDiv.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Caricamento anteprima...</div>';
+            previewDiv.style.display = 'block';
+            
+            fetch('/preview', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.text())
+            .then(html => {
+                previewDiv.innerHTML = html;
+            })
+            .catch(error => {
+                previewDiv.innerHTML = '<div class="alert alert-danger">Errore nel caricamento dell\'anteprima</div>';
+            });
+        }
     </script>
 </body>
 </html>
