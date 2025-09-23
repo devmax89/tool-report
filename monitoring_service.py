@@ -70,7 +70,6 @@ class AlarmMonitor:
 
     def should_filter_data(self, sid, timestamp):
         """Determina se un dato deve essere filtrato in base al timestamp"""
-        print(f"🔍 Controllo filtro per sid: {sid}")  # AGGIUNGI QUESTO
 
         # Se non ci sono impostazioni, usa default (no filter)
         if not hasattr(self, 'session_filters') or sid not in self.session_filters:
@@ -78,7 +77,6 @@ class AlarmMonitor:
             return False
         
         settings = self.session_filters[sid]
-        print(f"   Impostazioni: {settings}")
         
         # Se siamo in modalità storica, non filtrare nulla
         if settings['historical_mode']:
