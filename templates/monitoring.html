@@ -186,6 +186,32 @@
         <div class="monitoring-body">
             <!-- Timer centrale -->
             <div class="timer" id="timer">00:00</div>
+
+            <div style="margin: 20px 0; padding: 15px; background: #f8f9fa; border-radius: 8px; text-align: center;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="historicalMode" onchange="toggleHistoricalMode()" style="cursor: pointer;">
+                        <label for="historicalMode" style="margin: 0; font-weight: 500; cursor: pointer;">
+                            Modalità Storica (mostra anche dati vecchi)
+                        </label>
+                    </div>
+                    
+                    <div id="timeWindowContainer" style="display: flex; align-items: center; gap: 10px;">
+                        <label style="margin: 0;">Max anzianità dati:</label>
+                        <select id="timeWindow" class="form-select" style="width: auto;" onchange="updateTimeWindow()">
+                            <option value="10">10 minuti</option>
+                            <option value="20">20 minuti</option>
+                            <option value="30">30 minuti</option>
+                            <option value="45">45 minuti</option>
+                            <option value="60">1 ora</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="modeDescription" style="margin-top: 10px; color: #6c757d; font-size: 0.9em;">
+                    🔄 Modalità Live: mostra solo dati degli ultimi 10 minuti
+                </div>
+            </div>            
             
             <!-- Status Message -->
             <div id="statusMessage" class="status-message status-info" style="display: none;"></div>

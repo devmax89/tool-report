@@ -724,6 +724,33 @@ def handle_stop_monitoring():
     alarm_monitor.stop_monitoring(request.sid)
     emit('monitoring_stopped', {'message': 'Monitoraggio interrotto'})
 
+# AGGIUNGI QUI IL NUOVO HANDLER
+@socketio.on('update_time_filter')
+def handle_update_time_filter(data):
+    """Gestisce l'aggiornamento del filtro temporale"""
+    historical_mode = data.get('historical_mode', False)
+    time_window_minutes = data.get('time_window_minutes', 10)
+    
+    print(f'📅 Ricevuto update_time_filter da {request.sid}:')
+    print(f'   Data ricevuti: {data}')
+    print(f'   Modalità: {"Storica" if historical_mode else "Live"}')
+    if not historical_mode:
+        print(f'   Finestra temporale: {time_window_minutes} minuti')
+    
+    # Aggiorna le impostazioni nel monitor
+    alarm_monitor.update_time_filter(
+        request.sid, 
+        historical_mode, 
+        time_window_minutes
+    )
+    
+    # Conferma al client
+    emit('filter_updated', {
+        'historical_mode': historical_mode,
+        'time_window_minutes': time_window_minutes,
+        'status': 'success'
+    })
+
 # Aggiungi route per la pagina di monitoraggio
 @app.route('/monitoring')
 def monitoring_page():

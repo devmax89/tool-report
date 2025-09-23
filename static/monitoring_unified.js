@@ -12,6 +12,12 @@ let foundAlarmsData = {};
 let otherAlarmsData = {};
 let expectedAlarms = [];
 
+// Filtri variabili storico
+let historicalMode = false;
+let timeWindowMinutes = 10; // Default 10 minuti
+let filteredMetrics = {};
+let filteredAlarms = {};
+
 // Ottieni parametri dall'URL
 const urlParams = new URLSearchParams(window.location.search);
 const deviceId = urlParams.get('device_id');
@@ -263,14 +269,31 @@ function addFoundMetric(data) {
         foundDiv.appendChild(itemDiv);
     }
     
+    // Salva i dati SEMPRE
     foundMetricsData[data.metric_type] = data;
+    
+    // Controlla se deve essere nascosta visivamente (solo per display locale)
+    if (isDataTooOld(data.timestamp) && !historicalMode) {
+        const element = document.getElementById(`metric-${data.metric_type}`);
+        if (element) {
+            element.style.display = 'none';
+            console.log(`Metrica ${data.metric_type} nascosta visivamente (troppo vecchia)`);
+        }
+    }
+    
+    // Aggiorna contatori
+    updateFilteredCounts();
 }
 
 function updateMetricsProgress(data) {
-    const percentage = (data.found_count / data.total_expected) * 100;
+    // Usa conteggi locali filtrati invece di quelli del server
+    const visibleMetrics = Object.values(foundMetricsData)
+        .filter(m => !isDataTooOld(m.timestamp)).length;
+    
+    const percentage = (visibleMetrics / data.total_expected) * 100;
     const progressFill = document.getElementById('metricsProgress');
     progressFill.style.width = `${percentage}%`;
-    progressFill.textContent = `${data.found_count} / ${data.total_expected}`;
+    progressFill.textContent = `${visibleMetrics} / ${data.total_expected}`;
     
     updateWaitingMetrics(data.missing_list);
 }
@@ -318,7 +341,20 @@ function addFoundAlarm(data) {
         foundDiv.appendChild(itemDiv);
     }
     
+    // Salva i dati SEMPRE
     foundAlarmsData[data.alarm_type] = data;
+    
+    // Controlla se deve essere nascosto visualmente (solo per display locale)
+    if (isDataTooOld(data.timestamp) && !historicalMode) {
+        const element = document.getElementById(`alarm-${data.alarm_type}`);
+        if (element) {
+            element.style.display = 'none';
+            console.log(`Allarme ${data.alarm_type} nascosto visualmente (troppo vecchio)`);
+        }
+    }
+    
+    // Aggiorna contatori
+    updateFilteredCounts();
 }
 
 function addOtherAlarm(data) {
@@ -383,6 +419,197 @@ function playNotificationSound() {
     
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.1);
+}
+
+function toggleHistoricalMode() {
+    const checkbox = document.getElementById('historicalMode');
+    const timeWindowContainer = document.getElementById('timeWindowContainer');
+    const modeDescription = document.getElementById('modeDescription');
+    
+    historicalMode = checkbox.checked;
+    
+    console.log('📊 Toggle Historical Mode:', {
+        checked: checkbox.checked,
+        historicalMode: historicalMode,
+        timeWindow: timeWindowMinutes
+    });
+    
+    if (historicalMode) {
+        // Modalità storica
+        timeWindowContainer.style.opacity = '0.5';
+        timeWindowContainer.style.pointerEvents = 'none';
+        modeDescription.innerHTML = '📚 Modalità Storica: mostra tutti i dati disponibili';
+        modeDescription.style.color = '#17a2b8';
+    } else {
+        // Modalità live
+        timeWindowContainer.style.opacity = '1';
+        timeWindowContainer.style.pointerEvents = 'auto';
+        const minutes = document.getElementById('timeWindow').value;
+        modeDescription.innerHTML = `🔄 Modalità Live: mostra solo dati degli ultimi ${minutes} minuti`;
+        modeDescription.style.color = '#6c757d';
+    }
+    
+    // Invia aggiornamento al server
+    if (socket && socket.connected) {
+        console.log('📤 Invio update_time_filter al server con:', {
+            historical_mode: historicalMode,
+            time_window_minutes: timeWindowMinutes
+        });
+        
+        socket.emit('update_time_filter', {
+            historical_mode: historicalMode,
+            time_window_minutes: timeWindowMinutes
+        });
+        
+        // Aspetta conferma
+        socket.once('filter_updated', function(data) {
+            console.log('✅ Conferma dal server - Filtro aggiornato:', data);
+        });
+    } else {
+        console.error('❌ Socket non connesso! Impossibile aggiornare filtro sul server');
+    }
+    
+    // Riapplica il filtro ai dati esistenti localmente
+    refilterExistingData();
+}
+
+function updateTimeWindow() {
+    const select = document.getElementById('timeWindow');
+    timeWindowMinutes = parseInt(select.value);
+    
+    const modeDescription = document.getElementById('modeDescription');
+    const timeText = timeWindowMinutes === 60 ? '1 ora' : `${timeWindowMinutes} minuti`;
+    modeDescription.innerHTML = `🔄 Modalità Live: mostra solo dati degli ultimi ${timeText}`;
+    
+    // Invia aggiornamento al server
+    if (socket) {
+        socket.emit('update_time_filter', {
+            historical_mode: historicalMode,
+            time_window_minutes: timeWindowMinutes
+        });
+    }
+    
+    // Riapplica il filtro ai dati esistenti
+    refilterExistingData();
+}
+
+function isDataTooOld(timestampStr) {
+    // Se siamo in modalità storica, accetta tutto
+    if (historicalMode) {
+        return false;
+    }
+    
+    // Parsing del timestamp (formato "HH:MM:SS" o timestamp unix)
+    let dataTime;
+    
+    if (timestampStr.includes(':')) {
+        // Formato HH:MM:SS - assumiamo sia di oggi
+        const [hours, minutes, seconds] = timestampStr.split(':').map(Number);
+        dataTime = new Date();
+        dataTime.setHours(hours, minutes, seconds, 0);
+    } else {
+        // Timestamp unix
+        dataTime = new Date(parseInt(timestampStr));
+    }
+    
+    const now = new Date();
+    const diffMinutes = (now - dataTime) / (1000 * 60);
+    
+    return diffMinutes > timeWindowMinutes;
+}
+
+function refilterExistingData() {
+    // Rifiltra metriche
+    const foundMetricsDiv = document.getElementById('foundMetrics');
+    const waitingMetricsDiv = document.getElementById('waitingMetrics');
+    
+    // Nascondi/mostra metriche basandosi sul timestamp
+    for (const [metric, data] of Object.entries(foundMetricsData)) {
+        const element = document.getElementById(`metric-${metric}`);
+        if (element) {
+            if (isDataTooOld(data.timestamp)) {
+                element.style.display = 'none';
+                // Aggiungi di nuovo alla lista waiting se filtrato
+                if (!historicalMode) {
+                    const waitingItem = document.createElement('div');
+                    waitingItem.className = 'item waiting';
+                    waitingItem.id = `waiting-metric-${metric}`;
+                    waitingItem.innerHTML = `<strong>${metric}</strong><br>⏳ In attesa di dati recenti...`;
+                    waitingMetricsDiv.appendChild(waitingItem);
+                }
+            } else {
+                element.style.display = 'block';
+                // Rimuovi dalla lista waiting se presente
+                const waitingElement = document.getElementById(`waiting-metric-${metric}`);
+                if (waitingElement) {
+                    waitingElement.remove();
+                }
+            }
+        }
+    }
+    
+    // Rifiltra allarmi
+    const foundAlarmsDiv = document.getElementById('foundAlarms');
+    const waitingAlarmsDiv = document.getElementById('waitingAlarms');
+    
+    for (const [alarm, data] of Object.entries(foundAlarmsData)) {
+        const element = document.getElementById(`alarm-${alarm}`);
+        if (element) {
+            if (isDataTooOld(data.timestamp)) {
+                element.style.display = 'none';
+                // Aggiungi di nuovo alla lista waiting se filtrato
+                if (!historicalMode) {
+                    const waitingItem = document.createElement('div');
+                    waitingItem.className = 'item waiting';
+                    waitingItem.id = `waiting-alarm-${alarm}`;
+                    const friendlyName = alarmDescriptions[alarm] || alarm;
+                    waitingItem.innerHTML = `<strong>${alarm} - ${friendlyName}</strong><br>⏳ In attesa di dati recenti...`;
+                    waitingAlarmsDiv.appendChild(waitingItem);
+                }
+            } else {
+                element.style.display = 'block';
+                // Rimuovi dalla lista waiting se presente
+                const waitingElement = document.getElementById(`waiting-alarm-${alarm}`);
+                if (waitingElement) {
+                    waitingElement.remove();
+                }
+            }
+        }
+    }
+    
+    // Aggiorna contatori
+    updateFilteredCounts();
+}
+
+function updateFilteredCounts() {
+    // Conta elementi visibili
+    let visibleMetrics = 0;
+    let visibleAlarms = 0;
+    
+    for (const [metric, data] of Object.entries(foundMetricsData)) {
+        if (!isDataTooOld(data.timestamp)) {
+            visibleMetrics++;
+        }
+    }
+    
+    for (const [alarm, data] of Object.entries(foundAlarmsData)) {
+        if (!isDataTooOld(data.timestamp)) {
+            visibleAlarms++;
+        }
+    }
+    
+    // Aggiorna progress bars
+    const metricsProgress = document.getElementById('metricsProgress');
+    const alarmsProgress = document.getElementById('alarmsProgress');
+    
+    const metricsPercentage = (visibleMetrics / expectedMetrics.length) * 100;
+    const alarmsPercentage = (visibleAlarms / expectedAlarms.length) * 100;
+    
+    metricsProgress.style.width = `${metricsPercentage}%`;
+    metricsProgress.textContent = `${visibleMetrics} / ${expectedMetrics.length}`;
+    
+    alarmsProgress.style.width = `${alarmsPercentage}%`;
+    alarmsProgress.textContent = `${visibleAlarms} / ${expectedAlarms.length}`;
 }
 
 function playSuccessSound() {
