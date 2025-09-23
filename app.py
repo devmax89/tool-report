@@ -320,6 +320,68 @@ def create_excel_report(data):
         for sheet_name in sheets_to_remove:
             print(f"🗑️ Rimozione sheet: {sheet_name} (Downlink disabilitato)")
             del wb[sheet_name]
+        
+        # Modifica il Report Riassuntivo
+        if 'Report Riassuntivo' in wb.sheetnames:
+            ws_riassuntivo = wb['Report Riassuntivo']
+            print(f"🗑️ Aggiornamento Report Riassuntivo per rimuovere riferimenti Downlink...")
+            
+            # 1. AGGIORNA IL CAMPO "Nome Scenari" (solitamente riga 5)
+            for row in range(1, 10):  # Cerca nelle prime 10 righe
+                for col in range(1, 6):  # Colonne A-E
+                    cell = ws_riassuntivo.cell(row=row, column=col)
+                    if cell.value and isinstance(cell.value, str):
+                        # Cerca celle che contengono la lista degli scenari
+                        if "Scenario Allarme" in cell.value and "Scenario Downlink" in cell.value:
+                            old_value = cell.value
+                            # Rimuovi ", Scenario Downlink" dalla stringa
+                            new_value = cell.value.replace(", Scenario Downlink", "").replace(",Scenario Downlink", "")
+                            # Gestisci anche il caso in cui sia all'inizio
+                            new_value = new_value.replace("Scenario Downlink, ", "").replace("Scenario Downlink,", "")
+                            # Gestisci il caso in cui sia l'unico
+                            if new_value == "Scenario Downlink":
+                                new_value = ""
+                            cell.value = new_value
+                            print(f"   ✓ Aggiornato Nome Scenari (R{row}C{col}): '{old_value}' → '{new_value}'")
+            
+            # 2. RIMUOVI LA SEZIONE "Computo Comandi - Scenario Downlink"
+            downlink_row_found = None
+            
+            # Cerca nelle righe 20-25 dove solitamente si trova questa sezione
+            for row in range(20, min(26, ws_riassuntivo.max_row + 1)):
+                for col in range(1, 6):  # Colonne A-E
+                    cell = ws_riassuntivo.cell(row=row, column=col)
+                    if cell.value:
+                        cell_str = str(cell.value).strip()
+                        if "Computo Comandi" in cell_str and "Downlink" in cell_str:
+                            downlink_row_found = row
+                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
+                            break
+                        elif "Scenario Downlink" in cell_str:
+                            downlink_row_found = row
+                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
+                            break
+                if downlink_row_found:
+                    break
+            
+            # Se non trovato nelle righe 20-25, cerca in tutto il foglio
+            if not downlink_row_found:
+                for row in range(1, ws_riassuntivo.max_row + 1):
+                    for col in range(1, 6):
+                        cell = ws_riassuntivo.cell(row=row, column=col)
+                        if cell.value and "Computo Comandi" in str(cell.value) and "Downlink" in str(cell.value):
+                            downlink_row_found = row
+                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
+                            break
+                    if downlink_row_found:
+                        break
+            
+            if downlink_row_found:
+                # Rimuovi le 3 righe (header + intestazioni + dati)
+                ws_riassuntivo.delete_rows(downlink_row_found, 3)
+                print(f"   ✅ Rimosse righe {downlink_row_found}-{downlink_row_found+2} dal Report Riassuntivo")
+            else:
+                print(f"   ⚠️ Sezione Downlink non trovata nel Report Riassuntivo")
     
     # Aggiorna ogni sheet rimanente
     for sheet_name in wb.sheetnames:
