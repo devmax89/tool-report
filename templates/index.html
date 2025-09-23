@@ -215,7 +215,7 @@
         </div>
         
         <div class="footer">
-            <p>DIGIL Report Generator v1.0</p>
+            <p>DIGIL Report Generator v1.1</p>
         </div>
     </div>
 
@@ -687,22 +687,82 @@
                 statusLabel.style.color = '#dc3545';
             }
         });
+
+        function validateDateTime() {
+            const startDate = document.getElementById('start_date').value;
+            const startTime = document.getElementById('start_time').value;
+            const endDate = document.getElementById('end_date').value;
+            const endTime = document.getElementById('end_time').value;
+            
+            // Controlla che tutti i campi siano compilati
+            if (!startDate || !startTime || !endDate || !endTime) {
+                return {
+                    valid: false,
+                    message: 'Compila tutti i campi di data e ora'
+                };
+            }
+            
+            // Crea oggetti Date per il confronto
+            const startDateTime = new Date(`${startDate}T${startTime}:00`);
+            const endDateTime = new Date(`${endDate}T${endTime}:00`);
+            
+            // Verifica che la data/ora di fine sia successiva a quella di inizio
+            if (endDateTime <= startDateTime) {
+                return {
+                    valid: false,
+                    message: 'La data/ora di fine deve essere successiva a quella di inizio'
+                };
+            }
+            
+            // Verifica che la durata non sia eccessiva (es. max 7 giorni)
+            const diffHours = (endDateTime - startDateTime) / (1000 * 60 * 60);
+            if (diffHours > 168) { // 7 giorni = 168 ore
+                return {
+                    valid: false,
+                    message: 'La durata del test non può superare i 7 giorni'
+                };
+            }
+            
+            return {
+                valid: true,
+                message: 'Date valide'
+            };
+        }
+
+        // Funzione per mostrare errori di validazione
+        function showValidationError(message) {
+            const testResults = document.getElementById('testResults');
+            testResults.innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>❌ Errore Validazione</h5>
+                    <p>${message}</p>
+                </div>
+            `;
+            testResults.style.display = 'block';
+            
+            // Scorri verso l'errore
+            testResults.scrollIntoView({ behavior: 'smooth' });
+        }
         
         function showPreview() {
+            // Validazione data/ora
+            const validation = validateDateTime();
+            if (!validation.valid) {
+                showValidationError(validation.message);
+                return;
+            }
+            
             const form = document.getElementById('reportForm');
             const formData = new FormData(form);
             
             const downlinkCheckbox = document.getElementById('enable_downlink');
             if (downlinkCheckbox) {
-                // Rimuovi eventuale valore esistente
                 formData.delete('enable_downlink');
-                // Aggiungi il valore corretto
                 if (downlinkCheckbox.checked) {
                     formData.append('enable_downlink', 'on');
                 }
             }
             
-            // Mostra loading
             const previewDiv = document.getElementById('preview');
             previewDiv.innerHTML = '<div class="alert alert-info"><span class="spinner"></span> Caricamento anteprima...</div>';
             previewDiv.style.display = 'block';
@@ -719,6 +779,46 @@
                 previewDiv.innerHTML = '<div class="alert alert-danger">Errore nel caricamento dell\'anteprima</div>';
             });
         }
+
+        // Validazione al submit del form
+        document.addEventListener('DOMContentLoaded', function() {
+            const reportForm = document.getElementById('reportForm');
+            
+            reportForm.addEventListener('submit', function(e) {
+                console.log('Form submit intercepted for validation');
+                
+                // Validazione data/ora prima del submit
+                const validation = validateDateTime();
+                if (!validation.valid) {
+                    console.log('Validation failed:', validation.message);
+                    e.preventDefault(); // Impedisce il submit
+                    showValidationError(validation.message);
+                    return false;
+                }
+                
+                console.log('Validation passed, allowing form submit');
+            });
+            
+            // Validazione in tempo reale quando cambiano i campi
+            const dateTimeFields = ['start_date', 'start_time', 'end_date', 'end_time'];
+            dateTimeFields.forEach(fieldId => {
+                const field = document.getElementById(fieldId);
+                if (field) {
+                    field.addEventListener('change', function() {
+                        // Nascondi eventuali errori precedenti dopo 2 secondi
+                        setTimeout(() => {
+                            const testResults = document.getElementById('testResults');
+                            if (testResults.style.display !== 'none') {
+                                const alertDanger = testResults.querySelector('.alert-danger');
+                                if (alertDanger && alertDanger.textContent.includes('Errore Validazione')) {
+                                    testResults.style.display = 'none';
+                                }
+                            }
+                        }, 2000);
+                    });
+                }
+            });
+        });        
     </script>
 </body>
 </html>

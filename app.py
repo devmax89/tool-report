@@ -396,6 +396,53 @@ def create_excel_report(data):
     
     return wb
 
+def validate_datetime_range(start_date, start_time, end_date, end_time):
+    """
+    Valida che la data/ora di fine sia successiva a quella di inizio
+    
+    Args:
+        start_date (str): Data inizio in formato YYYY-MM-DD
+        start_time (str): Ora inizio in formato HH:MM o HH:MM:SS
+        end_date (str): Data fine in formato YYYY-MM-DD
+        end_time (str): Ora fine in formato HH:MM o HH:MM:SS
+    
+    Returns:
+        tuple: (is_valid, error_message)
+    """
+    try:
+        # Aggiungi secondi se mancano
+        if len(start_time) == 5:  # HH:MM
+            start_time += ":00"
+        if len(end_time) == 5:    # HH:MM
+            end_time += ":00"
+        
+        # Crea oggetti datetime
+        start_dt = datetime.strptime(f"{start_date} {start_time}", "%Y-%m-%d %H:%M:%S")
+        end_dt = datetime.strptime(f"{end_date} {end_time}", "%Y-%m-%d %H:%M:%S")
+        
+        # Verifica che la data/ora di fine sia successiva a quella di inizio
+        if end_dt <= start_dt:
+            return False, f"La data/ora di fine ({end_date} {end_time}) deve essere successiva a quella di inizio ({start_date} {start_time})"
+        
+        # Verifica durata massima (7 giorni)
+        duration = end_dt - start_dt
+        max_duration = timedelta(days=7)
+        
+        if duration > max_duration:
+            return False, f"La durata del test ({duration.days} giorni, {duration.seconds//3600} ore) non può superare i 7 giorni"
+        
+        # Verifica durata minima (almeno 1 minuto)
+        min_duration = timedelta(minutes=1)
+        if duration < min_duration:
+            return False, "La durata del test deve essere di almeno 1 minuto"
+        
+        return True, "Date valide"
+        
+    except ValueError as e:
+        return False, f"Formato data/ora non valido: {str(e)}"
+    except Exception as e:
+        return False, f"Errore validazione: {str(e)}"
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -420,7 +467,17 @@ def generate_report():
         }
 
         print(f"📋 Generazione report con Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
-        
+
+        # VALIDAZIONE DATA/ORA
+        is_valid, error_message = validate_datetime_range(
+            data['start_date'], data['start_time'],
+            data['end_date'], data['end_time']
+        )
+
+        if not is_valid:
+            print(f"❌ Validazione fallita: {error_message}")
+            return render_template('error.html', error_message=f"Errore validazione periodo test: {error_message}")    
+
         # Controlla se inviare email
         send_email = request.form.get('send_email') == 'on'
         custom_email = request.form.get('custom_email', '').strip()
@@ -525,7 +582,9 @@ def preview_report():
             'device_id': 'Device ID', 
             'vendor': 'Vendor',
             'start_date': 'Data Inizio',
-            'start_time': 'Ora Inizio'
+            'start_time': 'Ora Inizio',
+            'end_date': 'Data Fine',
+            'end_time': 'Ora Fine'
         }
         
         missing_fields = []
@@ -539,6 +598,28 @@ def preview_report():
             <div class="alert alert-warning">
                 <h5>⚠️ Campi Mancanti</h5>
                 <p>Per favore compila tutti i campi obbligatori: <strong>{fields_str}</strong></p>
+            </div>
+            """
+
+        # VALIDAZIONE DATA/ORA - AGGIUNTO QUI
+        is_valid, error_message = validate_datetime_range(
+            request.form.get('start_date'), request.form.get('start_time'),
+            request.form.get('end_date'), request.form.get('end_time')
+        )
+
+        if not is_valid:
+            return f"""
+            <div class="alert alert-danger">
+                <h5>❌ Errore Periodo Test</h5>
+                <p>{error_message}</p>
+                <div style="margin-top: 15px;">
+                    <strong>Suggerimenti:</strong>
+                    <ul style="margin-top: 5px;">
+                        <li>Verifica che data/ora di fine sia successiva a quella di inizio</li>
+                        <li>La durata massima consentita è di 7 giorni</li>
+                        <li>La durata minima deve essere di almeno 1 minuto</li>
+                    </ul>
+                </div>
             </div>
             """
         
