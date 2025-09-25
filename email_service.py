@@ -42,7 +42,7 @@ class EmailService:
                 'server': 'smtp.gmail.com',
                 'port': 587,
                 'use_tls': True,
-                'username': os.getenv('GMAIL_USER', 'max.tvn89@gmail.com'),
+                'username': os.getenv('GMAIL_USER', 'digil.report.info@gmail.com'),
                 'password': os.getenv('GMAIL_APP_PASSWORD', '')
             },
             'outlook': {
@@ -171,7 +171,7 @@ class EmailService:
     
             # Crea messaggio
             msg = MIMEMultipart()
-            msg['From'] = config['username']
+            msg['From'] = f"DIGIL Report System <{config['username']}>"
             msg['To'] = ', '.join(recipients['to'])
             if recipients.get('cc'):
                 msg['Cc'] = ', '.join(recipients['cc'])

@@ -43,6 +43,14 @@ const alarmDescriptions = {
     'EGM_OUT_SENS_23_VAR_7': 'Channel'
 };
 
+function getCurrentDateFormatted() {
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = String(now.getFullYear()).slice(-2);
+    return `${day}/${month}/${year}`;
+}
+
 // Inizializza connessione WebSocket
 function initSocket() {
     socket = io();
@@ -242,6 +250,7 @@ function addFoundMetric(data) {
     }
     
     const sourceIcon = data.source === 'lastval' ? '📌' : '📡';
+    const dateFormatted = getCurrentDateFormatted();
     
     // Controlla se la metrica esiste già
     let existingItem = document.getElementById(`metric-${data.metric_type}`);
@@ -250,7 +259,7 @@ function addFoundMetric(data) {
         // Aggiorna l'elemento esistente
         existingItem.innerHTML = `
             <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
         `;
         // Flash per indicare aggiornamento
         existingItem.style.backgroundColor = '#ccffcc';
@@ -264,7 +273,7 @@ function addFoundMetric(data) {
         itemDiv.className = 'item found';
         itemDiv.innerHTML = `
             <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
         `;
         foundDiv.appendChild(itemDiv);
     }
@@ -314,6 +323,7 @@ function updateWaitingMetrics(missingList) {
 function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
+    const dateFormatted = getCurrentDateFormatted();
     
     // Controlla se l'allarme esiste già
     let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
@@ -322,7 +332,7 @@ function addFoundAlarm(data) {
         // Aggiorna l'elemento esistente
         existingItem.innerHTML = `
             <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
         `;
         // Flash per indicare aggiornamento
         existingItem.style.backgroundColor = '#ffffcc';
@@ -336,7 +346,7 @@ function addFoundAlarm(data) {
         itemDiv.className = 'item found';
         itemDiv.innerHTML = `
             <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
         `;
         foundDiv.appendChild(itemDiv);
     }
@@ -365,10 +375,11 @@ function addOtherAlarm(data) {
     itemDiv.className = 'item other';
     
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
+    const dateFormatted = getCurrentDateFormatted();
     
     itemDiv.innerHTML = `
         <strong>${data.alarm_type} - ${friendlyName}</strong><br>
-        📍 ${data.timestamp} - Valore: ${data.value}
+        📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
     `;
     otherDiv.appendChild(itemDiv);
     

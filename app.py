@@ -312,7 +312,7 @@ def create_excel_report(data):
     }
     
     # NUOVO: Rimuovi sheet Downlink se disabilitato
-    enable_downlink = data.get('enable_downlink', True)  # Default True per retrocompatibilità
+    enable_downlink = data.get('enable_downlink', False)  # Default False se non specificato
     
     if not enable_downlink:
         # Trova e rimuovi tutti gli sheet che contengono "Downlink" nel nome
