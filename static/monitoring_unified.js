@@ -489,7 +489,18 @@ function updateTimeWindow() {
     timeWindowMinutes = parseInt(select.value);
     
     const modeDescription = document.getElementById('modeDescription');
-    const timeText = timeWindowMinutes === 60 ? '1 ora' : `${timeWindowMinutes} minuti`;
+    let timeText;
+    
+    if (timeWindowMinutes === 60) {
+        timeText = '1 ora';
+    } else if (timeWindowMinutes === 120) {
+        timeText = '2 ore';
+    } else if (timeWindowMinutes === 150) {
+        timeText = '2 ore e 30 minuti';
+    } else {
+        timeText = `${timeWindowMinutes} minuti`;
+    }
+    
     modeDescription.innerHTML = `🔄 Modalità Live: mostra solo dati degli ultimi ${timeText}`;
     
     // Invia aggiornamento al server

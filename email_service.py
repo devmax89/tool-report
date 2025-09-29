@@ -27,41 +27,20 @@ else:
 
 class EmailService:
     def __init__(self):
-        # Configurazione SMTP dalle variabili d'ambiente
-        self.smtp_config = {
-            'gmail': {
-                'server': 'smtp.gmail.com',
-                'port': 587,
-                'use_tls': True,
-                'username': os.getenv('GMAIL_USER', 'digil.report.info@gmail.com'),
-                'password': os.getenv('GMAIL_APP_PASSWORD', '')
-            },
-            'outlook': {
-                'server': 'smtp-mail.outlook.com',
-                'port': 587,
-                'use_tls': True,
-                'username': os.getenv('OUTLOOK_USER', 'm.tavernese@reply.it'),
-                'password': os.getenv('OUTLOOK_PASSWORD', '')
-            }
-        }
-        
         # Verifica se Outlook COM è disponibile
         self.outlook_com_available = self.check_outlook_com()
         
-        # Provider attivo (può essere cambiato tramite env o default)
+        # SOLO OUTLOOK COM - NESSUN FALLBACK
         if self.outlook_com_available:
-            self.active_provider = 'outlook_com'  # Priorità a Outlook COM se disponibile
+            self.active_provider = 'outlook_com'
             print("✅ Outlook COM disponibile - sarà usato per l'invio email")
         else:
-            self.active_provider = os.getenv('EMAIL_PROVIDER', 'gmail')
-            print(f"ℹ️ Outlook COM non disponibile - uso {self.active_provider}")
+            self.active_provider = None
+            print("⚠️ ATTENZIONE: Outlook COM non disponibile - invio email disabilitato")
+            print("   Per abilitare l'invio email, installare e configurare Outlook")
         
         # Carica configurazione destinatari
         self.load_recipients_config()
-        
-        # Verifica configurazione all'avvio
-        if self.active_provider != 'outlook_com':
-            self.check_configuration()
     
     def check_outlook_com(self):
         """Verifica se Outlook COM API è disponibile"""
@@ -71,15 +50,6 @@ class EmailService:
             return True
         except:
             return False
-    
-    def check_configuration(self):
-        """Verifica che la configurazione email sia completa"""
-        config = self.smtp_config[self.active_provider]
-        if not config['password']:
-            print(f"⚠️ ATTENZIONE: Password non configurata per {self.active_provider}")
-            print(f"   Configura {self.active_provider.upper()}_APP_PASSWORD nel file .env")
-        else:
-            print(f"✅ Email service configurato correttamente con {self.active_provider}")
     
     def load_recipients_config(self):
         """Carica la configurazione dei destinatari dal file JSON"""
@@ -91,8 +61,7 @@ class EmailService:
         else:
             config_path = Path('config/email_recipients.json')
         
-        # PER ORA: Tutti i destinatari puntano a digil.report.info@gmail.com
-        # Questo è temporaneo finché non definisci le email finali
+        # Configurazione di default se il file non esiste
         if not config_path.exists():
             config_path.parent.mkdir(exist_ok=True, parents=True)
             default_config = {
@@ -136,7 +105,7 @@ class EmailService:
         
         return {'to': ['digil.report.info@gmail.com'], 'cc': []}
     
-    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted):
+    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None):
         """Invia email usando Outlook COM API (Windows only)"""
         try:
             import win32com.client
@@ -145,7 +114,7 @@ class EmailService:
             
             print("📧 Invio tramite Outlook COM...")
             
-            # IMPORTANTE: Inizializza COM per questo thread
+            # Inizializza COM per questo thread
             pythoncom.CoInitialize()
             
             try:
@@ -153,8 +122,15 @@ class EmailService:
                 outlook = win32com.client.Dispatch('outlook.application')
                 mail = outlook.CreateItem(0)  # 0 = olMailItem
                 
-                # Ottieni destinatari
-                recipients = self.get_recipients(vendor)
+                # GESTIONE EMAIL PERSONALIZZATA
+                if send_to_custom and send_to_custom.strip():
+                    # Se c'è un'email personalizzata, usa SOLO quella
+                    recipients = {'to': [send_to_custom.strip()], 'cc': []}
+                    print(f"📧 Uso email personalizzata: {send_to_custom}")
+                else:
+                    # Altrimenti usa i destinatari configurati per il vendor
+                    recipients = self.get_recipients(vendor)
+                    print(f"📧 Uso destinatari standard per vendor: {vendor}")
                 
                 # Configura email
                 mail.To = '; '.join(recipients['to'])
@@ -187,7 +163,7 @@ class EmailService:
                 # Imposta il corpo HTML
                 mail.HTMLBody = html_body
                 
-                # IMPORTANTE: Converti il percorso in assoluto
+                # Converti il percorso in assoluto
                 absolute_path = os.path.abspath(zip_path)
                 print(f"📎 Allegato: {absolute_path}")
                 
@@ -201,11 +177,15 @@ class EmailService:
                 # Invia
                 mail.Send()
                 
-                all_recipients = recipients['to'] + recipients.get('cc', [])
-                return True, f"Email inviata con successo tramite Outlook a: {', '.join(all_recipients)}"
+                # Messaggio di conferma appropriato
+                if send_to_custom:
+                    return True, f"Email inviata con successo tramite Outlook a: {send_to_custom}"
+                else:
+                    all_recipients = recipients['to'] + recipients.get('cc', [])
+                    return True, f"Email inviata con successo tramite Outlook a: {', '.join(all_recipients)}"
                 
             finally:
-                # IMPORTANTE: Deinizializza COM
+                # Deinizializza COM
                 pythoncom.CoUninitialize()
                 
         except ImportError:
@@ -215,88 +195,14 @@ class EmailService:
         except Exception as e:
             return False, f"Errore invio tramite Outlook COM: {str(e)}"
     
-    def send_via_smtp(self, zip_path, vendor, device_id, date_formatted, config):
-        """Metodo esistente per invio via SMTP (Gmail/Outlook)"""
-        try:
-            # Crea messaggio
-            msg = MIMEMultipart()
-            msg['From'] = f"DIGIL Report System <{config['username']}>"
-            
-            recipients = self.get_recipients(vendor)
-            msg['To'] = ', '.join(recipients['to'])
-            if recipients.get('cc'):
-                msg['Cc'] = ', '.join(recipients['cc'])
-            
-            msg['Subject'] = f"Report DIGIL - {vendor} - {date_formatted} - Device {device_id}"
-            
-            # Carica template HTML
-            if getattr(sys, 'frozen', False):
-                base_path = Path(sys.executable).parent
-                template_path = base_path / '_internal' / 'templates' / 'email_template.html'
-                if not template_path.exists():
-                    template_path = Path(sys._MEIPASS) / 'templates' / 'email_template.html'
-            else:
-                template_path = Path('templates/email_template.html')
-            
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template = Template(f.read())
-            
-            html_body = template.render(
-                vendor=vendor,
-                device_id=device_id,
-                date_formatted=date_formatted,
-                send_datetime=datetime.now().strftime('%d/%m/%Y %H:%M'),
-                filename=os.path.basename(zip_path)
-            )
-            
-            msg.attach(MIMEText(html_body, 'html'))
-            
-            # Allega il file ZIP
-            with open(zip_path, 'rb') as attachment:
-                part = MIMEBase('application', 'zip')
-                part.set_payload(attachment.read())
-                encoders.encode_base64(part)
-                part.add_header(
-                    'Content-Disposition',
-                    f'attachment; filename={os.path.basename(zip_path)}'
-                )
-                msg.attach(part)
-            
-            # Invia email
-            all_recipients = recipients['to'] + recipients.get('cc', [])
-            
-            print(f"📧 Connessione a {config['server']}...")
-            server = smtplib.SMTP(config['server'], config['port'])
-            if config['use_tls']:
-                server.starttls()
-            
-            print(f"📧 Autenticazione come {config['username']}...")
-            server.login(config['username'], config['password'])
-            
-            print(f"📧 Invio a: {', '.join(all_recipients)}")
-            server.send_message(msg)
-            server.quit()
-            
-            return True, f"Email inviata con successo a: {', '.join(all_recipients)}"
-            
-        except Exception as e:
-            return False, f"Errore invio email: {str(e)}"
-    
     def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None):
-        """Metodo principale che sceglie il metodo di invio migliore"""
+        """Metodo principale che invia SOLO tramite Outlook COM"""
         try:
-            # Se c'è Outlook COM disponibile, usalo
             if self.active_provider == 'outlook_com':
-                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted)
+                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted, send_to_custom)
             else:
-                # Altrimenti usa SMTP (Gmail o Outlook web)
-                config = self.smtp_config[self.active_provider]
-                
-                if not config['password']:
-                    raise Exception(f"Password non configurata per {self.active_provider}. Configura il file .env")
-                
-                return self.send_via_smtp(zip_path, vendor, device_id, date_formatted, config)
-                
+                # NESSUN FALLBACK - Restituisce errore se Outlook non disponibile
+                return False, "Invio email disabilitato: Outlook non disponibile."
         except Exception as e:
             return False, f"Errore invio email: {str(e)}"
     
@@ -309,18 +215,7 @@ class EmailService:
                 else:
                     return False, "Outlook COM non disponibile"
             else:
-                config = self.smtp_config[self.active_provider]
-                
-                if not config['password']:
-                    return False, "Password non configurata"
-                
-                server = smtplib.SMTP(config['server'], config['port'])
-                if config['use_tls']:
-                    server.starttls()
-                server.login(config['username'], config['password'])
-                server.quit()
-                
-                return True, f"Connessione a {self.active_provider} riuscita"
+                return False, "Nessun provider email configurato - Outlook richiesto per l'invio email"
         except Exception as e:
             return False, f"Errore connessione: {str(e)}"
 

@@ -541,10 +541,9 @@ def generate_report():
                 
                 # Se c'è un'email custom, usa quella
                 if custom_email:
-                    custom_recipients = {'to': [custom_email], 'cc': []}
                     success, message = email_service.send_report_email(
                         zip_path, data['vendor'], data['device_id'], 
-                        date_formatted, custom_recipients
+                        date_formatted, custom_email  # ✅ Passa la stringa email
                     )
                 else:
                     success, message = email_service.send_report_email(
