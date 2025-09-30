@@ -112,59 +112,79 @@
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <label for="ui_location">UI Località *</label>
-                        <select class="form-select" id="ui_location" name="ui_location" required>
-                            <option value="">Seleziona...</option>
-                            <option value="Abruzzo Molise">Abruzzo Molise</option>
-                            <option value="Bari">Bari</option>
-                            <option value="Bologna">Bologna</option>
-                            <option value="Brescia">Brescia</option>
-                            <option value="Brindisi">Brindisi</option>
-                            <option value="Brugherio">Brugherio</option>
-                            <option value="Catania">Catania</option>
-                            <option value="Chiuro">Chiuro</option>
-                            <option value="Cislago">Cislago</option>
-                            <option value="Codrongianos">Codrongianos</option>
-                            <option value="Dugale">Dugale</option>
-                            <option value="Feroleto">Feroleto</option>
-                            <option value="Firenze">Firenze</option>
-                            <option value="Frattamaggiore">Frattamaggiore</option>
-                            <option value="Friuli Venezia Giulia">Friuli Venezia Giulia</option>
-                            <option value="Genova">Genova</option>
-                            <option value="Gorlago">Gorlago</option>
-                            <option value="Lazio">Lazio</option>
-                            <option value="Lazio Centro Sud">Lazio Centro Sud</option>
-                            <option value="Lazio Nord">Lazio Nord</option>
-                            <option value="Maddaloni">Maddaloni</option>
-                            <option value="Marche">Marche</option>
-                            <option value="Novara">Novara</option>
-                            <option value="Palermo">Palermo</option>
-                            <option value="Parma">Parma</option>
-                            <option value="Pont Saint Martin">Pont Saint Martin</option>
-                            <option value="Rotonda">Rotonda</option>
-                            <option value="Suvereto">Suvereto</option>
-                            <option value="Torino">Torino</option>
-                            <option value="Trentino Alto Adige">Trentino Alto Adige</option>
-                            <option value="Villasor">Villasor</option>
-                            <option value="Vittorio Veneto">Vittorio Veneto</option>
-                        </select>
-                        <div class="form-text">Seleziona l'UI dove si trova il dispositivo (necessaria per test metriche)</div>
-                    </div>
-                    
-                    <!-- Colonna destra: Switch Downlink -->
-                    <div style="flex: 0 0 auto; margin-top: 25px;">
-                        <div style="display: flex; align-items: center; gap: 10px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e1e8ed;">
-                            <label class="switch-label" style="margin: 0; white-space: nowrap; font-weight: 500;">
-                                Scenario Downlink:
-                            </label>
-                            <div class="form-check form-switch" style="margin: 0;">
-                                <input class="form-check-input" type="checkbox" id="enable_downlink" name="enable_downlink" 
-                                    style="cursor: pointer; width: 50px; height: 25px; margin: 0;">
-                                <label class="form-check-label" for="enable_downlink" id="downlink_status" 
-                                    style="margin-left: 10px; font-weight: bold; color: #dc3545; margin-bottom: 0;">
-                                    Disabilitato
-                                </label>
+                    <div class="form-section" style="grid-column: 1 / -1;">
+                        <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px; align-items: start;">
+                            <!-- Colonna sinistra: UI Località -->
+                            <div>
+                                <div class="form-group">
+                                    <label for="ui_location">UI Località *</label>
+                                    <select class="form-select" id="ui_location" name="ui_location" required>
+                                        <option value="">Seleziona...</option>
+                                        <option value="Abruzzo Molise">Abruzzo Molise</option>
+                                        <option value="Bari">Bari</option>
+                                        <option value="Bologna">Bologna</option>
+                                        <option value="Brescia">Brescia</option>
+                                        <option value="Brindisi">Brindisi</option>
+                                        <option value="Brugherio">Brugherio</option>
+                                        <option value="Catania">Catania</option>
+                                        <option value="Chiuro">Chiuro</option>
+                                        <option value="Cislago">Cislago</option>
+                                        <option value="Codrongianos">Codrongianos</option>
+                                        <option value="Dugale">Dugale</option>
+                                        <option value="Feroleto">Feroleto</option>
+                                        <option value="Firenze">Firenze</option>
+                                        <option value="Frattamaggiore">Frattamaggiore</option>
+                                        <option value="Friuli Venezia Giulia">Friuli Venezia Giulia</option>
+                                        <option value="Genova">Genova</option>
+                                        <option value="Gorlago">Gorlago</option>
+                                        <option value="Lazio">Lazio</option>
+                                        <option value="Lazio Centro Sud">Lazio Centro Sud</option>
+                                        <option value="Lazio Nord">Lazio Nord</option>
+                                        <option value="Maddaloni">Maddaloni</option>
+                                        <option value="Marche">Marche</option>
+                                        <option value="Novara">Novara</option>
+                                        <option value="Palermo">Palermo</option>
+                                        <option value="Parma">Parma</option>
+                                        <option value="Pont Saint Martin">Pont Saint Martin</option>
+                                        <option value="Rotonda">Rotonda</option>
+                                        <option value="Suvereto">Suvereto</option>
+                                        <option value="Torino">Torino</option>
+                                        <option value="Trentino Alto Adige">Trentino Alto Adige</option>
+                                        <option value="Villasor">Villasor</option>
+                                        <option value="Vittorio Veneto">Vittorio Veneto</option>
+                                    </select>
+                                    <div class="form-text">Seleziona l'UI dove si trova il dispositivo (necessaria per test metriche)</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Colonna destra: Switch centrati -->
+                            <div style="display: flex; justify-content: center; gap: 30px; align-items: center; height: 100%;">
+                                <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e1e8ed;">
+                                    <label class="switch-label" style="margin: 0; white-space: nowrap; font-weight: 500;">
+                                        Scenario Downlink:
+                                    </label>
+                                    <div class="form-check form-switch" style="margin: 0;">
+                                        <input class="form-check-input" type="checkbox" id="enable_downlink" name="enable_downlink" 
+                                            style="cursor: pointer; width: 50px; height: 25px; margin: 0;">
+                                        <label class="form-check-label" for="enable_downlink" id="downlink_status" 
+                                            style="margin-left: 10px; font-weight: bold; color: #dc3545; margin-bottom: 0;">
+                                            Disabilitato
+                                        </label>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #f8f9fa; border-radius: 6px; border: 1px solid #e1e8ed;">
+                                    <label class="switch-label" style="margin: 0; white-space: nowrap; font-weight: 500;">
+                                        Scenario Allarme:
+                                    </label>
+                                    <div class="form-check form-switch" style="margin: 0;">
+                                        <input class="form-check-input" type="checkbox" id="enable_allarme" name="enable_allarme" checked 
+                                            style="cursor: pointer; width: 50px; height: 25px; margin: 0;">
+                                        <label class="form-check-label" for="enable_allarme" id="allarme_status" 
+                                            style="margin-left: 10px; font-weight: bold; color: #28a745; margin-bottom: 0;">
+                                            Abilitato
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -818,7 +838,17 @@
                     });
                 }
             });
-        });        
+        });
+        document.getElementById('enable_allarme').addEventListener('change', function() {
+            const statusLabel = document.getElementById('allarme_status');
+            if (this.checked) {
+                statusLabel.textContent = 'Abilitato';
+                statusLabel.style.color = '#28a745';
+            } else {
+                statusLabel.textContent = 'Disabilitato';
+                statusLabel.style.color = '#dc3545';
+            }
+        });      
     </script>
 </body>
 </html>

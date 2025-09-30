@@ -19,6 +19,13 @@
                             <span style="color: #dc3545;">❌ Disabilitato</span>
                         {% endif %}
                     </li>
+                    <li><strong>Scenario Allarme:</strong> 
+                        {% if data.enable_allarme %}
+                            <span style="color: #28a745;">✅ Abilitato</span>
+                        {% else %}
+                            <span style="color: #dc3545;">❌ Disabilitato</span>
+                        {% endif %}
+                    </li>
                 </ul>
             </div>
             <div class="preview-section">

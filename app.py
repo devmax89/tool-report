@@ -311,77 +311,94 @@ def create_excel_report(data):
         'end_time': data['end_time']
     }
     
-    # NUOVO: Rimuovi sheet Downlink se disabilitato
-    enable_downlink = data.get('enable_downlink', False)  # Default False se non specificato
+    # Gestione scenari
+    enable_downlink = data.get('enable_downlink', False)
+    enable_allarme = data.get('enable_allarme', True)  # Default True per Scenario Allarme
     
+    # Rimuovi sheet Scenario Allarme se disabilitato
+    if not enable_allarme:
+        sheets_to_remove = [sheet for sheet in wb.sheetnames if 'Allarme' in sheet and 'Downlink' not in sheet]
+        for sheet_name in sheets_to_remove:
+            print(f"🗑️ Rimozione sheet: {sheet_name} (Scenario Allarme disabilitato)")
+            del wb[sheet_name]
+    
+    # Rimuovi sheet Downlink se disabilitato
     if not enable_downlink:
-        # Trova e rimuovi tutti gli sheet che contengono "Downlink" nel nome
         sheets_to_remove = [sheet for sheet in wb.sheetnames if 'Downlink' in sheet]
         for sheet_name in sheets_to_remove:
             print(f"🗑️ Rimozione sheet: {sheet_name} (Downlink disabilitato)")
             del wb[sheet_name]
+    
+    # Modifica il Report Riassuntivo
+    if 'Report Riassuntivo' in wb.sheetnames:
+        ws_riassuntivo = wb['Report Riassuntivo']
+        print(f"📝 Aggiornamento Report Riassuntivo...")
         
-        # Modifica il Report Riassuntivo
-        if 'Report Riassuntivo' in wb.sheetnames:
-            ws_riassuntivo = wb['Report Riassuntivo']
-            print(f"🗑️ Aggiornamento Report Riassuntivo per rimuovere riferimenti Downlink...")
-            
-            # 1. AGGIORNA IL CAMPO "Nome Scenari" (solitamente riga 5)
-            for row in range(1, 10):  # Cerca nelle prime 10 righe
-                for col in range(1, 6):  # Colonne A-E
-                    cell = ws_riassuntivo.cell(row=row, column=col)
-                    if cell.value and isinstance(cell.value, str):
-                        # Cerca celle che contengono la lista degli scenari
-                        if "Scenario Allarme" in cell.value and "Scenario Downlink" in cell.value:
-                            old_value = cell.value
-                            # Rimuovi ", Scenario Downlink" dalla stringa
-                            new_value = cell.value.replace(", Scenario Downlink", "").replace(",Scenario Downlink", "")
-                            # Gestisci anche il caso in cui sia all'inizio
-                            new_value = new_value.replace("Scenario Downlink, ", "").replace("Scenario Downlink,", "")
-                            # Gestisci il caso in cui sia l'unico
-                            if new_value == "Scenario Downlink":
-                                new_value = ""
-                            cell.value = new_value
-                            print(f"   ✓ Aggiornato Nome Scenari (R{row}C{col}): '{old_value}' → '{new_value}'")
-            
-            # 2. RIMUOVI LA SEZIONE "Computo Comandi - Scenario Downlink"
-            downlink_row_found = None
-            
-            # Cerca nelle righe 20-25 dove solitamente si trova questa sezione
-            for row in range(20, min(26, ws_riassuntivo.max_row + 1)):
-                for col in range(1, 6):  # Colonne A-E
-                    cell = ws_riassuntivo.cell(row=row, column=col)
-                    if cell.value:
-                        cell_str = str(cell.value).strip()
-                        if "Computo Comandi" in cell_str and "Downlink" in cell_str:
-                            downlink_row_found = row
-                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
-                            break
-                        elif "Scenario Downlink" in cell_str:
-                            downlink_row_found = row
-                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
-                            break
-                if downlink_row_found:
+        # 1. AGGIORNA IL CAMPO "Nome Scenari"
+        for row in range(1, 10):
+            cell = ws_riassuntivo.cell(row=row, column=1)
+            if cell.value == "Nome Scenari":
+                # Costruisci la lista degli scenari abilitati
+                scenarios = []
+                if enable_allarme:
+                    scenarios.append("Scenario Allarme")
+                scenarios.append("Scenario in Range")  # Sempre presente
+                if enable_downlink:
+                    scenarios.append("Scenario Downlink")
+                
+                # Aggiorna il valore nella colonna C
+                cell_scenari = ws_riassuntivo.cell(row=row, column=3)
+                old_value = cell_scenari.value
+                cell_scenari.value = ", ".join(scenarios)
+                print(f"   ✓ Aggiornato Nome Scenari (R{row}C3): '{old_value}' → '{cell_scenari.value}'")
+                break
+
+        if not enable_allarme:
+            for row in range(1, 10):
+                cell = ws_riassuntivo.cell(row=row, column=1)
+                if cell.value == "Topics Involved":
+                    value_cell = ws_riassuntivo.cell(row=row, column=3)
+                    if value_cell.value and "unsolicited" in str(value_cell.value).lower():
+                        old_value = value_cell.value
+                        value_cell.value = "event"
+                        print(f"   ✓ Aggiornato Topics Involved (R{row}C3): '{old_value}' → 'event' (Scenario Allarme disabilitato)")
                     break
-            
-            # Se non trovato nelle righe 20-25, cerca in tutto il foglio
-            if not downlink_row_found:
-                for row in range(1, ws_riassuntivo.max_row + 1):
-                    for col in range(1, 6):
-                        cell = ws_riassuntivo.cell(row=row, column=col)
-                        if cell.value and "Computo Comandi" in str(cell.value) and "Downlink" in str(cell.value):
-                            downlink_row_found = row
-                            print(f"   ✓ Trovata sezione Downlink alla riga {row}")
-                            break
-                    if downlink_row_found:
+        
+        # 2. TROVA E RIMUOVI LE SEZIONI DISABILITATE
+        rows_to_delete = []
+        
+        # Scansiona tutto il foglio cercando le sezioni in tutte le colonne
+        for row in range(1, ws_riassuntivo.max_row + 1):
+            # Controlla le prime 5 colonne per trovare i titoli delle sezioni
+            for col in range(1, 6):
+                cell = ws_riassuntivo.cell(row=row, column=col)
+                if cell.value:
+                    cell_str = str(cell.value).strip()
+                    
+                    # Cerca "Computo Metriche - Scenario Allarme"
+                    if not enable_allarme and "Computo Metriche - Scenario Allarme" in cell_str:
+                        # Include la riga vuota sopra il titolo + titolo + header + 2 righe dati
+                        rows_to_delete.append((row - 1, 5, "Scenario Allarme"))
+                        print(f"   ✓ Trovata sezione Scenario Allarme alla riga {row}")
                         break
-            
-            if downlink_row_found:
-                # Rimuovi le 3 righe (header + intestazioni + dati)
-                ws_riassuntivo.delete_rows(downlink_row_found, 3)
-                print(f"   ✅ Rimosse righe {downlink_row_found}-{downlink_row_found+2} dal Report Riassuntivo")
-            else:
-                print(f"   ⚠️ Sezione Downlink non trovata nel Report Riassuntivo")
+                    
+                    # Cerca "Computo Comandi - Scenario Downlink"
+                    elif not enable_downlink and "Computo Comandi - Scenario Downlink" in cell_str:
+                        # Include la riga vuota sopra il titolo + titolo + header + 1 riga dati
+                        rows_to_delete.append((row - 1, 4, "Scenario Downlink"))
+                        print(f"   ✓ Trovata sezione Scenario Downlink alla riga {row}")
+                        break
+        
+        # Elimina le righe in ordine inverso per non alterare gli indici
+        rows_to_delete.sort(key=lambda x: x[0], reverse=True)
+        for row_start, num_rows, scenario_name in rows_to_delete:
+            try:
+                # Assicurati di non andare sotto la riga 1
+                actual_row_start = max(1, row_start)
+                ws_riassuntivo.delete_rows(actual_row_start, num_rows)
+                print(f"   ✅ Rimosse righe {actual_row_start}-{actual_row_start+num_rows-1} ({scenario_name})")
+            except Exception as e:
+                print(f"   ⚠️ Errore rimozione righe per {scenario_name}: {e}")
     
     # Aggiorna ogni sheet rimanente
     for sheet_name in wb.sheetnames:
@@ -463,10 +480,13 @@ def generate_report():
             'end_time': request.form['end_time'],
             'vendor': request.form['vendor'],
             'device_id': request.form['device_id'],
-            'enable_downlink': request.form.get('enable_downlink') == 'on'
+            'enable_downlink': request.form.get('enable_downlink') == 'on',
+            'enable_allarme': request.form.get('enable_allarme') == 'on'  # NUOVO
         }
 
-        print(f"📋 Generazione report con Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
+        print(f"📋 Generazione report:")
+        print(f"   Scenario Allarme: {'ABILITATO' if data['enable_allarme'] else 'DISABILITATO'}")
+        print(f"   Scenario Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
 
         # VALIDAZIONE DATA/ORA
         is_valid, error_message = validate_datetime_range(
@@ -486,7 +506,6 @@ def generate_report():
         wb = create_excel_report(data)
         
         # Estrai solo le ultime 4 cifre del Device ID per il nome
-        # es. da "1:1:2:16:22:DIGIL_MRN_0299" prendi "0299"
         device_digits = ''.join(filter(str.isdigit, data['device_id']))
         device_short = device_digits[-4:] if len(device_digits) >= 4 else device_digits
         
@@ -498,10 +517,9 @@ def generate_report():
         vendor_clean = data['vendor'].replace('/', '-').replace('\\', '-')
         
         # Nuovo naming convention per il ZIP
-        # "Report MII - 02-09-2025 - 464.zip"
         zip_filename = f"Report {vendor_clean} - {date_formatted} - {device_short}.zip"
         
-        # Nome del file Excel dentro il ZIP (manteniamo il formato originale)
+        # Nome del file Excel dentro il ZIP
         datetime_start = datetime.strptime(f"{data['start_date']} {data['start_time']}", "%Y-%m-%d %H:%M")
         excel_filename = f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         
@@ -536,14 +554,12 @@ def generate_report():
             print("📧 Tentativo invio email...")
             
             try:
-                # Importa il servizio email
                 from email_service import email_service
                 
-                # Se c'è un'email custom, usa quella
                 if custom_email:
                     success, message = email_service.send_report_email(
                         zip_path, data['vendor'], data['device_id'], 
-                        date_formatted, custom_email  # ✅ Passa la stringa email
+                        date_formatted, custom_email
                     )
                 else:
                     success, message = email_service.send_report_email(
