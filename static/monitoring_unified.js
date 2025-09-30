@@ -18,6 +18,10 @@ let timeWindowMinutes = 10; // Default 10 minuti
 let filteredMetrics = {};
 let filteredAlarms = {};
 
+// Struttura per salvare lo storico di ogni metrica
+let metricHistory = {};
+let lastSeenValues = {};
+
 // Ottieni parametri dall'URL
 const urlParams = new URLSearchParams(window.location.search);
 const deviceId = urlParams.get('device_id');
@@ -250,48 +254,142 @@ function addFoundMetric(data) {
     }
     
     const sourceIcon = data.source === 'lastval' ? '📌' : '📡';
-    const dateFormatted = getCurrentDateFormatted();
     
-    // Controlla se la metrica esiste già
+    // Controlla se il valore è cambiato rispetto all'ultimo visto
+    const valueChanged = !lastSeenValues[data.metric_type] || 
+                        lastSeenValues[data.metric_type] !== data.value;
+    
+    // Inizializza storico se non esiste
+    if (!metricHistory[data.metric_type]) {
+        metricHistory[data.metric_type] = [];
+    }
+    
+    // Aggiungi allo storico SOLO se il valore è cambiato
+    if (valueChanged) {
+        metricHistory[data.metric_type].unshift({
+            timestamp: data.timestamp,
+            value: data.value,
+            source: data.source
+        });
+        
+        // Limita lo storico a max 50 entries per metrica
+        if (metricHistory[data.metric_type].length > 50) {
+            metricHistory[data.metric_type].pop();
+        }
+        
+        // Aggiorna l'ultimo valore visto
+        lastSeenValues[data.metric_type] = data.value;
+    }
+    
+    // Controlla se l'elemento esiste già
     let existingItem = document.getElementById(`metric-${data.metric_type}`);
     
     if (existingItem) {
-        // Aggiorna l'elemento esistente
-        existingItem.innerHTML = `
-            <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
-            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
-        `;
-        // Flash per indicare aggiornamento
-        existingItem.style.backgroundColor = '#ccffcc';
-        setTimeout(() => {
-            existingItem.style.backgroundColor = '';
-        }, 500);
+        // Aggiorna SEMPRE il valore principale (mostra l'ultimo ricevuto)
+        const mainContent = existingItem.querySelector('.metric-main-content');
+        if (mainContent) {
+            mainContent.innerHTML = `
+                <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
+                📍 ${data.timestamp} - Valore: ${data.value}
+            `;
+        }
+        
+        // Aggiorna lo storico solo se il valore è cambiato
+        if (valueChanged) {
+            updateMetricHistory(data.metric_type);
+            
+            // Flash per indicare aggiornamento
+            existingItem.style.backgroundColor = '#ccffcc';
+            setTimeout(() => {
+                existingItem.style.backgroundColor = '';
+            }, 500);
+        }
     } else {
-        // Crea nuovo elemento
+        // Crea nuovo elemento con storico
         const itemDiv = document.createElement('div');
         itemDiv.id = `metric-${data.metric_type}`;
         itemDiv.className = 'item found';
+        
         itemDiv.innerHTML = `
-            <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
-            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
+            <div class="metric-main-content">
+                <strong>${category} ${data.metric_type} [${sourceIcon} ${data.source}]</strong><br>
+                📍 ${data.timestamp} - Valore: ${data.value}
+            </div>
+            <span class="expand-arrow">▼</span>
+            <div class="metric-history" id="history-${data.metric_type}"></div>
         `;
+        
+        // Aggiungi evento click per espandere/collassare
+        itemDiv.addEventListener('click', function(e) {
+            if (!e.target.closest('.metric-history')) {
+                toggleMetricHistory(data.metric_type);
+            }
+        });
+        
         foundDiv.appendChild(itemDiv);
+        updateMetricHistory(data.metric_type);
     }
     
-    // Salva i dati SEMPRE
+    // Salva i dati
     foundMetricsData[data.metric_type] = data;
     
-    // Controlla se deve essere nascosta visivamente (solo per display locale)
+    // Gestisci visibilità se troppo vecchio
     if (isDataTooOld(data.timestamp) && !historicalMode) {
         const element = document.getElementById(`metric-${data.metric_type}`);
         if (element) {
             element.style.display = 'none';
-            console.log(`Metrica ${data.metric_type} nascosta visivamente (troppo vecchia)`);
         }
     }
     
-    // Aggiorna contatori
     updateFilteredCounts();
+}
+
+// Aggiungi queste due nuove funzioni subito dopo addFoundMetric
+function toggleMetricHistory(metricType) {
+    const item = document.getElementById(`metric-${metricType}`);
+    const history = document.getElementById(`history-${metricType}`);
+    
+    if (item && history) {
+        item.classList.toggle('expanded');
+        history.classList.toggle('show');
+    }
+}
+
+function updateMetricHistory(metricType) {
+    const historyDiv = document.getElementById(`history-${metricType}`);
+    if (!historyDiv || !metricHistory[metricType]) return;
+    
+    // Mostra solo entries con valori diversi
+    const uniqueHistory = metricHistory[metricType];
+    const count = uniqueHistory.length;
+    
+    if (count === 0) {
+        historyDiv.innerHTML = '<strong>📜 Nessun cambiamento rilevato</strong>';
+        return;
+    }
+    
+    let html = `<strong>📜 Storico cambiamenti (${count} variazioni):</strong><br>`;
+    
+    // Mostra massimo le prime 10 variazioni
+    const maxDisplay = Math.min(10, uniqueHistory.length);
+    
+    for (let i = 0; i < maxDisplay; i++) {
+        const entry = uniqueHistory[i];
+        const icon = entry.source === 'lastval' ? '📌' : '📡';
+        html += `
+            <div class="history-entry">
+                ${i + 1}. ${icon} ${entry.timestamp} - Valore: ${entry.value}
+            </div>
+        `;
+    }
+    
+    if (uniqueHistory.length > 10) {
+        html += `<div class="history-entry" style="font-style: italic; color: #666;">
+            ... e altre ${uniqueHistory.length - 10} variazioni
+        </div>`;
+    }
+    
+    historyDiv.innerHTML = html;
 }
 
 function updateMetricsProgress(data) {
@@ -323,7 +421,6 @@ function updateWaitingMetrics(missingList) {
 function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
-    const dateFormatted = getCurrentDateFormatted();
     
     // Controlla se l'allarme esiste già
     let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
@@ -332,7 +429,7 @@ function addFoundAlarm(data) {
         // Aggiorna l'elemento esistente
         existingItem.innerHTML = `
             <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
+            📍 ${data.timestamp} - Valore: ${data.value}
         `;
         // Flash per indicare aggiornamento
         existingItem.style.backgroundColor = '#ffffcc';
@@ -346,7 +443,7 @@ function addFoundAlarm(data) {
         itemDiv.className = 'item found';
         itemDiv.innerHTML = `
             <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${dateFormatted} - ${data.timestamp} - Valore: ${data.value}
+            📍 ${data.timestamp} - Valore: ${data.value}
         `;
         foundDiv.appendChild(itemDiv);
     }
@@ -359,7 +456,6 @@ function addFoundAlarm(data) {
         const element = document.getElementById(`alarm-${data.alarm_type}`);
         if (element) {
             element.style.display = 'none';
-            console.log(`Allarme ${data.alarm_type} nascosto visualmente (troppo vecchio)`);
         }
     }
     

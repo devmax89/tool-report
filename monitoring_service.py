@@ -105,7 +105,7 @@ class AlarmMonitor:
         check_interval = 5
         last_aggregated_check = None
         
-        # Aggiungi questa riga per avere accesso alla mappatura degli allarmi
+        # Mappatura allarmi
         alarm_mapping = {
             'EGM_OUT_SENS_23_VAR_32': 'TC_F12A_L1',
             'EGM_OUT_SENS_23_VAR_33': 'TC_F12A_L2',
@@ -123,8 +123,8 @@ class AlarmMonitor:
             'EGM_OUT_SENS_23_VAR_31': 'Inc_Y'
         }
         
-        # Dati per metriche
-        found_metrics = {}
+        # Traccia quali metriche hanno almeno una lettura (per progress)
+        metrics_with_data = set()
         expected_metrics = self._get_expected_metrics(num_sensors)
         
         # Dati per allarmi
@@ -132,7 +132,6 @@ class AlarmMonitor:
         other_alarms = {}
         alarm_config = self._get_expected_alarms(num_sensors)
         
-        # Prepara lista iniziale di allarmi attesi
         if isinstance(alarm_config, dict):
             expected_alarms = alarm_config['primary']
             is_flexible = alarm_config.get('flexible', False)
@@ -140,7 +139,6 @@ class AlarmMonitor:
             expected_alarms = alarm_config
             is_flexible = False
         
-        # Storia eventi
         event_history = []
         all_received_alarms = {}
         
@@ -153,8 +151,8 @@ class AlarmMonitor:
                 self.socketio.emit('monitoring_timeout', {
                     'message': f'Timeout raggiunto ({timeout_minutes} minuti)',
                     'metrics': {
-                        'found': list(found_metrics.keys()),
-                        'missing': [m for m in expected_metrics if m not in found_metrics]
+                        'found': list(metrics_with_data),
+                        'missing': [m for m in expected_metrics if m not in metrics_with_data]
                     },
                     'alarms': {
                         'found': list(found_alarms.keys()),
@@ -170,127 +168,120 @@ class AlarmMonitor:
                 end_timestamp = int(current_time.timestamp())
                 start_timestamp = end_timestamp - 300  # Ultimi 5 minuti
                 
-                # Check 1: Metriche dalla telemetria (circa riga 150-170)
+                # Check 1: Metriche dalla telemetria
                 success_tm, tm_data = digil_test_service.get_telemetry_data(
                     device_id, ui, start_timestamp, end_timestamp
                 )
 
                 if success_tm and 'tm' in tm_data and tm_data['tm']:
                     for tm_entry in tm_data['tm']:
-                        # Converti timestamp del pacchetto
                         packet_timestamp = tm_entry.get('timestamp', 0) / 1000
                         
-                        # IMPORTANTE: Controlla SUBITO se il dato è troppo vecchio
                         if self.should_filter_data(sid, packet_timestamp):
-                            print(f"⏭️ Pacchetto telemetria filtrato (troppo vecchio)")
-                            continue  # Salta TUTTO questo pacchetto
+                            continue
                         
-                        packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
+                        # Formatta timestamp con data e ora
+                        packet_datetime = datetime.fromtimestamp(packet_timestamp)
+                        formatted_timestamp = packet_datetime.strftime('%d/%m/%y - %H:%M:%S')
                         
                         if 'metrics' in tm_entry:
-                            for metric in tm_entry['metrics']:
+                            for idx, metric in enumerate(tm_entry['metrics']):
                                 metric_type = metric.get('metricType', '')
                                 metric_val = metric.get('val', '')
                                 
-                                if metric_type in expected_metrics and metric_type not in found_metrics:
-                                    # Controlla PRIMA se è troppo vecchio
-                                    if self.should_filter_data(sid, packet_timestamp):
-                                        print(f"⏭️ Metrica {metric_type} filtrata (troppo vecchia)")
-                                        continue  # SALTA completamente questa metrica
-                                    
-                                    # Aggiungi SOLO se NON è filtrata
-                                    found_metrics[metric_type] = metric_val
+                                # Formatta timestamp con progressivo se necessario
+                                if len(tm_entry['metrics']) > 1:
+                                    display_time = f"{formatted_timestamp}.{idx:02d}"
+                                else:
+                                    display_time = formatted_timestamp
+                                
+                                if metric_type in expected_metrics:
+                                    metrics_with_data.add(metric_type)
                                     
                                     metric_entry = {
                                         'metric_type': metric_type,
                                         'value': metric_val,
-                                        'timestamp': packet_time,
+                                        'timestamp': display_time,
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'telemetry'
                                     }
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
 
-                # Check 2: Lastval per metriche mancanti E allarmi
+                # Check 2: Lastval per metriche E allarmi
                 success_lv, lastval_data = digil_test_service.get_lastval_data(device_id, ui)
 
                 if success_lv and 'lastVal' in lastval_data:
                     current_received_alarms = {}
                     
                     for entry in lastval_data.get('lastVal', []):
-                        # Converti timestamp del pacchetto
                         packet_timestamp = entry.get('timestamp', 0) / 1000
                         
-                        # IMPORTANTE: Controlla SUBITO se il dato è troppo vecchio
                         if self.should_filter_data(sid, packet_timestamp):
-                            packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
-                            print(f"⏭️ Entry lastval filtrato (troppo vecchio) - {packet_time}")
-                            continue  # Salta TUTTO questo entry
+                            continue
                         
-                        packet_time = datetime.fromtimestamp(packet_timestamp).strftime('%H:%M:%S')
+                        # CORREZIONE: Definisci packet_datetime QUI, non formatted_timestamp
+                        packet_datetime = datetime.fromtimestamp(packet_timestamp)
+                        formatted_timestamp = packet_datetime.strftime('%d/%m/%y - %H:%M:%S')
                         
                         if 'metrics' in entry:
-                            for metric in entry['metrics']:
+                            for idx, metric in enumerate(entry['metrics']):
                                 metric_type = metric.get('metricType', '')
                                 metric_val = metric.get('val', '')
                                 
-                                # Controlla se è una metrica mancante
-                                if metric_type in expected_metrics and metric_type not in found_metrics:
-                                    found_metrics[metric_type] = metric_val
+                                # Formatta timestamp con progressivo per multiple metriche
+                                if len(entry['metrics']) > 1:
+                                    display_time = f"{formatted_timestamp}.{idx:02d}"
+                                else:
+                                    display_time = formatted_timestamp
+                                
+                                # Gestione metriche
+                                if metric_type in expected_metrics:
+                                    metrics_with_data.add(metric_type)
                                     
                                     metric_entry = {
                                         'metric_type': metric_type,
                                         'value': metric_val,
-                                        'timestamp': packet_time,
+                                        'timestamp': display_time,
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'lastval'
                                     }
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
                                 
-                                # Controlla se è un allarme
+                                # Gestione allarmi - USA formatted_timestamp NON display_time
                                 if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
                                     current_received_alarms[metric_type] = metric_val
                                     
-                                    # Aggiungi ad all_received_alarms solo se non presente
                                     if metric_type not in all_received_alarms:
                                         all_received_alarms[metric_type] = metric_val
                                     
-                                    # Processa allarme atteso
                                     if metric_type in expected_alarms:
                                         if metric_type not in found_alarms:
-                                            # Controlla PRIMA se è troppo vecchio
-                                            if self.should_filter_data(sid, packet_timestamp):
-                                                print(f"⏭️ Allarme {metric_type} filtrato (troppo vecchio)")
-                                                continue  # Non aggiungere a found_alarms
-                                            
-                                            # Aggiungi SOLO se non filtrato
                                             found_alarms[metric_type] = metric_val
                                             alarm_entry = {
                                                 'alarm_type': metric_type,
                                                 'value': metric_val,
-                                                'timestamp': packet_time,
+                                                'timestamp': formatted_timestamp,  # NO progressivo per allarmi
                                                 'elapsed': str(elapsed).split('.')[0],
                                                 'is_expected': True
                                             }
                                             event_history.append(('alarm', alarm_entry))
                                             self.socketio.emit('alarm_found', alarm_entry, room=sid)
-                                    
-                                    # Processa allarme non atteso (other)
                                     else:
                                         if metric_type not in other_alarms:
                                             other_alarms[metric_type] = metric_val
                                             other_alarm_entry = {
                                                 'alarm_type': metric_type,
                                                 'value': metric_val,
-                                                'timestamp': packet_time,
+                                                'timestamp': formatted_timestamp,  # NO progressivo per allarmi
                                                 'elapsed': str(elapsed).split('.')[0],
                                                 'is_expected': False
                                             }
                                             event_history.append(('other_alarm', other_alarm_entry))
                                             self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
                     
-                    # Adatta dinamicamente gli allarmi attesi SE configurazione flessibile
+                    # Gestione allarmi flessibili
                     if is_flexible and isinstance(alarm_config, dict):
                         if num_sensors == 3:
                             primary_count = sum(1 for alarm in alarm_config['primary'] if alarm in all_received_alarms)
@@ -314,8 +305,8 @@ class AlarmMonitor:
                                         }, room=sid)
                             expected_alarms = new_expected
 
-                # Check 3: API aggregata come fallback (solo ogni 30 secondi e dopo almeno 1 minuto)
-                missing_metrics = [m for m in expected_metrics if m not in found_metrics]
+                # Check 3: API aggregata (solo per metriche che non hanno MAI ricevuto dati)
+                missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
 
                 should_check_aggregated = (
@@ -333,20 +324,20 @@ class AlarmMonitor:
                     if success_agg and 'measures' in agg_data:
                         measures = agg_data['measures']
                         
-                        # Processa metriche mancanti
+                        # Processa solo metriche mai ricevute
                         for measure_key, measure_data in measures.items():
                             if measure_key in digil_test_service.reverse_metrics_mapping:
                                 eit_metric = digil_test_service.reverse_metrics_mapping[measure_key]
                                 
                                 if eit_metric in missing_metrics and measure_data and isinstance(measure_data, dict) and len(measure_data) > 0:
-                                    # Estrai timestamp dalla misura
                                     measure_timestamp = measure_data.get('timestamp', 0) / 1000
 
                                     if self.should_filter_data(sid, measure_timestamp):
-                                        print(f"⏭️ Metrica {eit_metric} da API aggregata filtrata (troppo vecchia)")
                                         continue
 
-                                    measure_time = datetime.fromtimestamp(measure_timestamp).strftime('%H:%M:%S')
+                                    # Formatta timestamp con data
+                                    measure_datetime = datetime.fromtimestamp(measure_timestamp)
+                                    display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
                                     
                                     if 'avg' in measure_data:
                                         value = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
@@ -355,19 +346,19 @@ class AlarmMonitor:
                                     else:
                                         continue
                                     
-                                    found_metrics[eit_metric] = value
+                                    metrics_with_data.add(eit_metric)
                                     
                                     metric_entry = {
                                         'metric_type': eit_metric,
                                         'value': value,
-                                        'timestamp': measure_time,  # Usa il timestamp della misura
+                                        'timestamp': display_time,
                                         'elapsed': str(elapsed).split('.')[0],
                                         'source': 'aggregated'
                                     }
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
                         
-                        # Processa allarmi mancanti
+                        # Gestione allarmi aggregati
                         measures_to_alarms = {
                             'SENS_Digil2_TC_F12A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_32',
                             'SENS_Digil2_TC_F12A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_33',
@@ -389,46 +380,39 @@ class AlarmMonitor:
                             if alarm_key in missing_alarms and measure_key in measures:
                                 measure_data = measures[measure_key]
                                 if measure_data and 'value' in measure_data:
-                                    # Estrai timestamp dalla misura
                                     measure_timestamp = measure_data.get('timestamp', 0) / 1000
 
                                     if self.should_filter_data(sid, measure_timestamp):
-                                        print(f"⏭️ Allarme {alarm_key} da API aggregata filtrato (troppo vecchio)")
                                         continue
 
-                                    measure_time = datetime.fromtimestamp(measure_timestamp).strftime('%H:%M:%S')
+                                    # Formatta timestamp con formato unificato
+                                    measure_datetime = datetime.fromtimestamp(measure_timestamp)
+                                    display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
                                     
                                     found_alarms[alarm_key] = measure_data['value']
                                     
                                     alarm_entry = {
                                         'alarm_type': alarm_key,
                                         'value': measure_data['value'],
-                                        'timestamp': measure_time,  # Usa il timestamp della misura
+                                        'timestamp': display_time,
                                         'elapsed': str(elapsed).split('.')[0],
                                         'is_expected': True,
                                         'source': 'aggregated'
                                     }
                                     event_history.append(('alarm', alarm_entry))
                                     self.socketio.emit('alarm_found', alarm_entry, room=sid)
-
-                                    # Debug: mostra stato dopo API aggregata
-                                    print(f"📊 Stato dopo API aggregata:")
-                                    print(f"   Metriche trovate (non filtrate): {len(found_metrics)}/{len(expected_metrics)}")
-                                    print(f"   Allarmi trovati (non filtrati): {len(found_alarms)}/{len(expected_alarms)}")                                    
                 
-                # Invia aggiornamenti di stato
-                missing_metrics = [m for m in expected_metrics if m not in found_metrics]
+                # Aggiornamenti di stato
+                missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
                 
-                # Aggiornamento metriche
                 self.socketio.emit('metrics_update', {
-                    'found_count': len(found_metrics),
+                    'found_count': len(metrics_with_data),
                     'total_expected': len(expected_metrics),
                     'missing_list': missing_metrics,
                     'last_check': datetime.now().strftime('%H:%M:%S')
                 }, room=sid)
                 
-                # Aggiornamento allarmi
                 self.socketio.emit('alarms_update', {
                     'found_count': len(found_alarms),
                     'total_expected': len(expected_alarms),
@@ -437,12 +421,12 @@ class AlarmMonitor:
                     'last_check': datetime.now().strftime('%H:%M:%S')
                 }, room=sid)
                 
-                # Se tutto è stato ricevuto
-                if len(found_metrics) == len(expected_metrics) and len(found_alarms) == len(expected_alarms):
+                # Completamento se tutto ricevuto
+                if len(metrics_with_data) == len(expected_metrics) and len(found_alarms) == len(expected_alarms):
                     self.socketio.emit('monitoring_complete', {
                         'success': True,
                         'metrics': {
-                            'total_found': len(found_metrics),
+                            'total_found': len(metrics_with_data),
                             'total_expected': len(expected_metrics)
                         },
                         'alarms': {

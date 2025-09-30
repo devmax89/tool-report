@@ -171,6 +171,47 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        .item {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .item:hover {
+            transform: translateX(5px);
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .item .expand-arrow {
+            float: right;
+            transition: transform 0.3s;
+        }
+
+        .item.expanded .expand-arrow {
+            transform: rotate(180deg);
+        }
+
+        .metric-history {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .metric-history.show {
+            display: block;
+        }
+
+        .history-entry {
+            padding: 5px;
+            margin: 3px 0;
+            background: white;
+            border-radius: 3px;
+            font-size: 0.85em;
+        }
     </style>
 </head>
 <body>
