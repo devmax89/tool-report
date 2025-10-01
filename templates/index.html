@@ -848,7 +848,98 @@
                 statusLabel.textContent = 'Disabilitato';
                 statusLabel.style.color = '#dc3545';
             }
-        });      
+        });
+        // Funzione per determinare il vendor dal Device ID
+        function detectVendorFromDeviceId(deviceId) {
+            // Pattern per identificare il tipo di dispositivo
+            // Formato: 1:1:2:XX:YY:DIGIL_ZZZ_NNNN
+            
+            if (!deviceId || !deviceId.includes('DIGIL_')) {
+                return null;
+            }
+            
+            // Estrai la parte centrale (ZZZ) dopo DIGIL_
+            const match = deviceId.match(/DIGIL_([A-Z0-9]+)_/);
+            
+            if (match && match[1]) {
+                const deviceType = match[1];
+                
+                // Mappatura tipo dispositivo -> vendor
+                const vendorMapping = {
+                    'IND': 'Indra/Olivetti',
+                    'SR2': 'Sirtiv2',
+                    'MRN': 'MII',
+                    'MII': 'MII'  // Aggiunto per sicurezza se ci fossero altri pattern
+                };
+                
+                // Controlla se il tipo dispositivo corrisponde a uno dei vendor
+                for (const [prefix, vendor] of Object.entries(vendorMapping)) {
+                    if (deviceType.startsWith(prefix) || deviceType === prefix) {
+                        return vendor;
+                    }
+                }
+            }
+            
+            return null;
+        }
+
+        // Aggiungi event listener per il campo Device ID
+        document.addEventListener('DOMContentLoaded', function() {
+            const deviceIdField = document.getElementById('device_id');
+            const vendorField = document.getElementById('vendor');
+            
+            // Flag per tracciare se l'utente ha modificato manualmente il vendor
+            let vendorManuallyChanged = false;
+            
+            // Rileva quando l'utente modifica manualmente il vendor
+            vendorField.addEventListener('change', function(e) {
+                // Se il change event non è stato triggerato dal codice (dall'auto-detect)
+                if (!e.isTrusted) return;
+                vendorManuallyChanged = true;
+            });           
+            // Auto-detect vendor quando viene inserito/modificato il Device ID
+            deviceIdField.addEventListener('input', function() {
+                const deviceId = this.value.trim();
+                
+                // Se l'utente ha già modificato manualmente il vendor, non sovrascrivere
+                // a meno che il campo vendor non sia vuoto
+                if (vendorManuallyChanged && vendorField.value) {
+                    return;
+                }
+                
+                // Prova a rilevare il vendor
+                const detectedVendor = detectVendorFromDeviceId(deviceId);
+                
+                if (detectedVendor) {
+                    // Imposta il vendor rilevato
+                    vendorField.value = detectedVendor;
+                    
+                    // Mostra un feedback visivo temporaneo
+                    vendorField.style.backgroundColor = '#d4edda';
+                    vendorField.style.transition = 'background-color 0.3s';
+                    
+                    setTimeout(() => {
+                        vendorField.style.backgroundColor = '';
+                    }, 1000);
+                    
+                    console.log(`Vendor auto-rilevato: ${detectedVendor} per device ${deviceId}`);
+                }
+            });
+            
+            // Reset del flag quando il form viene resettato
+            const reportForm = document.getElementById('reportForm');
+            reportForm.addEventListener('reset', function() {
+                vendorManuallyChanged = false;
+            });
+            
+            // Se il Device ID è già compilato al caricamento della pagina, prova il rilevamento
+            if (deviceIdField.value) {
+                const detectedVendor = detectVendorFromDeviceId(deviceIdField.value);
+                if (detectedVendor && !vendorField.value) {
+                    vendorField.value = detectedVendor;
+                }
+            }
+        });
     </script>
 </body>
 </html>
