@@ -233,9 +233,67 @@
         <div id="preview" style="display:none;">
             <!-- Preview content will be loaded here -->
         </div>
+
+        <div style="margin: 20px 40px;">
+            <div style="text-align: center;">
+                <button type="button" 
+                        class="btn btn-secondary" 
+                        onclick="toggleAnagrafica()"
+                        id="toggleAnagraficaBtn"
+                        style="width: 300px; margin: 0 auto;">
+                    📂 Gestione Anagrafica ▼
+                </button>
+            </div>
+            
+            <div id="anagraficaSection" 
+                style="display: none; 
+                        margin-top: 20px; 
+                        padding: 25px;
+                        background: #f0f8ff; 
+                        border: 2px dashed #004A93;
+                        border-radius: 10px;
+                        animation: slideDown 0.3s ease-out;">
+                
+                <h3 style="margin-top: 0; color: #004A93;">📂 Gestione Anagrafica Dispositivi</h3>
+                
+                <div id="anagraficaStatus" style="margin-bottom: 15px;">
+                    <div class="alert alert-info" style="margin: 0;">
+                        <strong>Stato:</strong> <span id="csvStatus">Nessuna anagrafica caricata</span>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="csvFile">Carica file anagrafica (digil_anagrafica_data_result.csv)</label>
+                    <input type="file" 
+                        class="form-control" 
+                        id="csvFile" 
+                        accept=".csv"
+                        style="padding: 10px;">
+                    <div class="form-text">
+                        Carica il CSV con l'anagrafica completa dei dispositivi per abilitare l'auto-compilazione di Numero Sensori e UI
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button type="button" class="btn btn-info" onclick="loadCSV()" style="flex: 1;">
+                        📥 Carica Anagrafica
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="clearAnagrafica()" style="flex: 1;">
+                        🗑️ Cancella Anagrafica
+                    </button>
+                </div>
+                
+                <div id="anagraficaStats" style="display: none; margin-top: 15px;">
+                    <div class="alert alert-success">
+                        <strong>✅ Anagrafica caricata con successo!</strong><br>
+                        <span id="statsInfo"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
         
         <div class="footer">
-            <p>DIGIL Report Generator v1.1</p>
+            <p>DIGIL Report Generator v1.2</p>
         </div>
     </div>
 
@@ -940,6 +998,389 @@
                 }
             }
         });
+        let anagraficaData = null;
+        function loadCSV() {
+            const fileInput = document.getElementById('csvFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Seleziona prima un file CSV');
+                return;
+            }
+            
+            // Verifica nome file (opzionale, può essere rimosso se non necessario)
+            if (!file.name.includes('digil_anagrafica')) {
+                if (!confirm('Il file non sembra essere "digil_anagrafica_data_result.csv". Vuoi continuare comunque?')) {
+                    return;
+                }
+            }
+            
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const csvText = e.target.result;
+                    anagraficaData = parseCSV(csvText);
+                    
+                    if (anagraficaData && Object.keys(anagraficaData).length > 0) {
+                        // Salva in localStorage per persistenza
+                        localStorage.setItem('digil_anagrafica', JSON.stringify(anagraficaData));
+                        localStorage.setItem('digil_anagrafica_date', new Date().toISOString());
+                        
+                        updateAnagraficaStatus(true);
+                        
+                        // Se c'è già un Device ID inserito, prova a compilare i campi
+                        const deviceId = document.getElementById('device_id').value;
+                        if (deviceId) {
+                            autoFillFromAnagrafica(deviceId);
+                        }
+                    } else {
+                        alert('Il file CSV sembra essere vuoto o non valido');
+                    }
+                } catch (error) {
+                    alert('Errore nel parsing del CSV: ' + error.message);
+                    console.error('Errore parsing CSV:', error);
+                }
+            };
+            
+            reader.readAsText(file);
+        }
+
+        // Parser CSV robusto che gestisce campi con virgole
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n').filter(line => line.trim());
+            if (lines.length < 2) return null;
+            
+            // Funzione helper per parsare una riga CSV gestendo virgole dentro virgolette
+            function parseCSVLine(line) {
+                const result = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        inQuotes = !inQuotes;
+                    } else if (char === ',' && !inQuotes) {
+                        result.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                result.push(current.trim());
+                return result;
+            }
+            
+            // Estrai headers
+            const headers = parseCSVLine(lines[0]);
+            
+            // Trova gli indici delle colonne che ci interessano (case-insensitive)
+            const deviceIdIndex = headers.findIndex(h => h.toLowerCase() === 'deviceid');
+            const uiIndex = headers.findIndex(h => h.toLowerCase() === 'ui');
+            const nSensoriIndex = headers.findIndex(h => h.toLowerCase() === 'n_sensori');
+            const vendorIndex = headers.findIndex(h => h.toLowerCase() === 'vendor');
+            
+            console.log('Indici colonne trovati:', {
+                deviceId: deviceIdIndex,
+                ui: uiIndex,
+                nSensori: nSensoriIndex,
+                vendor: vendorIndex
+            });
+            
+            if (deviceIdIndex === -1) {
+                alert('Colonna DeviceID non trovata nel CSV');
+                return null;
+            }
+            
+            // Parse dei dati
+            const data = {};
+            const uniqueDevices = new Set();
+            let errorCount = 0;
+            
+            for (let i = 1; i < lines.length; i++) {
+                try {
+                    const values = parseCSVLine(lines[i]);
+                    
+                    // Verifica che ci siano abbastanza colonne
+                    if (values.length <= Math.max(deviceIdIndex, uiIndex, nSensoriIndex, vendorIndex)) {
+                        continue;
+                    }
+                    
+                    const deviceId = values[deviceIdIndex];
+                    
+                    // Salta righe vuote o device già processati
+                    if (!deviceId || deviceId === '' || uniqueDevices.has(deviceId)) {
+                        continue;
+                    }
+                    
+                    uniqueDevices.add(deviceId);
+                    
+                    // Estrai i valori con controlli di sicurezza
+                    const deviceData = {
+                        deviceId: deviceId,
+                        ui: uiIndex !== -1 && values[uiIndex] ? values[uiIndex] : null,
+                        nSensori: nSensoriIndex !== -1 && values[nSensoriIndex] ? values[nSensoriIndex] : null,
+                        vendor: vendorIndex !== -1 && values[vendorIndex] ? values[vendorIndex] : null
+                    };
+                    
+                    // Salva solo se ha almeno un dato oltre al deviceId
+                    if (deviceData.ui || deviceData.nSensori || deviceData.vendor) {
+                        data[deviceId] = deviceData;
+                    }
+                    
+                } catch (e) {
+                    errorCount++;
+                    console.warn(`Errore parsing riga ${i}:`, e);
+                }
+            }
+            
+            console.log(`Anagrafica caricata: ${Object.keys(data).length} dispositivi validi su ${uniqueDevices.size} unici`);
+            if (errorCount > 0) {
+                console.warn(`${errorCount} righe con errori ignorate`);
+            }
+            
+            return Object.keys(data).length > 0 ? data : null;
+        }
+
+        // Funzione per auto-compilare i campi
+        function autoFillFromAnagrafica(deviceId) {
+            if (!anagraficaData || !deviceId) return;
+            
+            // Cerca il dispositivo nell'anagrafica
+            const deviceInfo = anagraficaData[deviceId];
+            
+            if (deviceInfo) {
+                console.log('Dispositivo trovato nell\'anagrafica:', deviceInfo);
+                
+                // Compila Numero Sensori
+                if (deviceInfo.nSensori) {
+                    const numSensorsField = document.getElementById('num_sensors');
+                    const nSensori = parseInt(deviceInfo.nSensori);
+                    
+                    // Mappa ai valori del select (3, 6, 12)
+                    if ([3, 6, 12].includes(nSensori)) {
+                        numSensorsField.value = nSensori.toString();
+                        highlightField(numSensorsField);
+                    }
+                }
+                
+                // Compila UI Località
+                if (deviceInfo.ui) {
+                    const uiField = document.getElementById('ui_location');
+                    // Cerca un match esatto o parziale nelle opzioni
+                    const options = Array.from(uiField.options);
+                    const exactMatch = options.find(opt => opt.value === deviceInfo.ui);
+                    
+                    if (exactMatch) {
+                        uiField.value = deviceInfo.ui;
+                        highlightField(uiField);
+                    } else {
+                        // Prova un match parziale
+                        const partialMatch = options.find(opt => 
+                            opt.value.toLowerCase().includes(deviceInfo.ui.toLowerCase()) ||
+                            deviceInfo.ui.toLowerCase().includes(opt.value.toLowerCase())
+                        );
+                        if (partialMatch) {
+                            uiField.value = partialMatch.value;
+                            highlightField(uiField);
+                        }
+                    }
+                }
+                
+                // Se c'è anche il vendor nell'anagrafica e il campo è vuoto, compilalo
+                if (deviceInfo.vendor && !document.getElementById('vendor').value) {
+                    const vendorField = document.getElementById('vendor');
+                    // Prova prima il mapping standard
+                    const mappedVendor = mapVendorName(deviceInfo.vendor);
+                    if (mappedVendor && Array.from(vendorField.options).some(opt => opt.value === mappedVendor)) {
+                        vendorField.value = mappedVendor;
+                        highlightField(vendorField);
+                    }
+                }
+                
+                return true;
+            } else {
+                console.log('Dispositivo non trovato nell\'anagrafica:', deviceId);
+                return false;
+            }
+        }
+
+        // Mappa i nomi vendor dal CSV alle opzioni del select
+        function mapVendorName(csvVendor) {
+            const vendorMap = {
+                'IBM': 'MII',
+                'MII': 'MII',
+                'INDRA': 'Indra/Olivetti',
+                'OLIVETTI': 'Indra/Olivetti',
+                'SIRTIV2': 'Sirtiv2',
+                'SIRTI': 'Sirtiv2'
+            };
+            
+            const upper = csvVendor.toUpperCase();
+            return vendorMap[upper] || null;
+        }
+
+        // Evidenzia un campo quando viene auto-compilato
+        function highlightField(field) {
+            field.style.backgroundColor = '#d4edda';
+            field.style.transition = 'background-color 0.3s';
+            
+            setTimeout(() => {
+                field.style.backgroundColor = '';
+            }, 1500);
+        }
+
+        // Aggiorna lo stato dell'anagrafica nell'interfaccia
+        function updateAnagraficaStatus(loaded) {
+            const statusSpan = document.getElementById('csvStatus');
+            const statsDiv = document.getElementById('anagraficaStats');
+            const statsInfo = document.getElementById('statsInfo');
+            
+            if (loaded && anagraficaData) {
+                const deviceCount = Object.keys(anagraficaData).length;
+                const loadDate = localStorage.getItem('digil_anagrafica_date');
+                const dateStr = loadDate ? new Date(loadDate).toLocaleString('it-IT') : 'ora';
+                
+                statusSpan.textContent = `✅ Anagrafica caricata (${deviceCount} dispositivi)`;
+                statusSpan.style.color = '#28a745';
+                
+                statsInfo.textContent = `Totale dispositivi: ${deviceCount} | Caricata: ${dateStr}`;
+                statsDiv.style.display = 'block';
+            } else {
+                statusSpan.textContent = 'Nessuna anagrafica caricata';
+                statusSpan.style.color = '#6c757d';
+                statsDiv.style.display = 'none';
+            }
+        }
+
+        // Cancella l'anagrafica dalla memoria
+        function clearAnagrafica() {
+            if (confirm('Sei sicuro di voler cancellare l\'anagrafica caricata?')) {
+                anagraficaData = null;
+                localStorage.removeItem('digil_anagrafica');
+                localStorage.removeItem('digil_anagrafica_date');
+                document.getElementById('csvFile').value = '';
+                updateAnagraficaStatus(false);
+            }
+        }
+
+        // Al caricamento della pagina, verifica se c'è un'anagrafica salvata
+        document.addEventListener('DOMContentLoaded', function() {
+            // Carica anagrafica da localStorage se presente
+            const savedAnagrafica = localStorage.getItem('digil_anagrafica');
+            if (savedAnagrafica) {
+                try {
+                    anagraficaData = JSON.parse(savedAnagrafica);
+                    updateAnagraficaStatus(true);
+                    console.log('Anagrafica caricata da cache locale');
+                } catch (e) {
+                    console.error('Errore caricamento anagrafica da cache:', e);
+                }
+            }
+            
+            // Aggiungi listener al campo Device ID per auto-compilazione
+            const deviceIdField = document.getElementById('device_id');
+            const originalListener = deviceIdField.oninput;
+            
+            deviceIdField.addEventListener('input', function() {
+                const deviceId = this.value.trim();
+                
+                // Esegui prima la logica originale del vendor (se esiste)
+                if (originalListener) originalListener.call(this);
+                
+                // Poi prova a compilare dall'anagrafica
+                if (anagraficaData && deviceId) {
+                    autoFillFromAnagrafica(deviceId);
+                }
+            });
+        });
+
+        // Opzione per caricare automaticamente un CSV predefinito dal server (se disponibile)
+        function loadDefaultAnagrafica() {
+            fetch('/static/digil_anagrafica_data_result.csv')
+                .then(response => {
+                    if (response.ok) return response.text();
+                    throw new Error('File non trovato');
+                })
+                .then(csvText => {
+                    anagraficaData = parseCSV(csvText);
+                    if (anagraficaData) {
+                        localStorage.setItem('digil_anagrafica', JSON.stringify(anagraficaData));
+                        localStorage.setItem('digil_anagrafica_date', new Date().toISOString());
+                        updateAnagraficaStatus(true);
+                    }
+                })
+                .catch(error => {
+                    console.log('Anagrafica predefinita non disponibile:', error);
+                });
+        }
+
+        function toggleAnagrafica() {
+            const section = document.getElementById('anagraficaSection');
+            const button = document.getElementById('toggleAnagraficaBtn');
+            
+            if (section.style.display === 'none' || section.style.display === '') {
+                // Apri la sezione
+                section.style.display = 'block';
+                button.innerHTML = '📂 Gestione Anagrafica ▲';
+                
+                // Se c'è un'anagrafica caricata, mostra il badge
+                if (anagraficaData && Object.keys(anagraficaData).length > 0) {
+                    const count = Object.keys(anagraficaData).length;
+                    button.innerHTML = `📂 Gestione Anagrafica (${count} dispositivi) ▲`;
+                }
+            } else {
+                // Chiudi la sezione con animazione
+                section.classList.add('closing');
+                
+                setTimeout(() => {
+                    section.style.display = 'none';
+                    section.classList.remove('closing');
+                    
+                    // Aggiorna il testo del bottone
+                    if (anagraficaData && Object.keys(anagraficaData).length > 0) {
+                        const count = Object.keys(anagraficaData).length;
+                        button.innerHTML = `📂 Gestione Anagrafica (${count} dispositivi) ▼`;
+                    } else {
+                        button.innerHTML = '📂 Gestione Anagrafica ▼';
+                    }
+                }, 300);
+            }
+        }
+
+        // Modifica la funzione updateAnagraficaStatus per aggiornare anche il bottone
+        function updateAnagraficaStatus(loaded) {
+            const statusSpan = document.getElementById('csvStatus');
+            const statsDiv = document.getElementById('anagraficaStats');
+            const statsInfo = document.getElementById('statsInfo');
+            const toggleBtn = document.getElementById('toggleAnagraficaBtn');
+            
+            if (loaded && anagraficaData) {
+                const deviceCount = Object.keys(anagraficaData).length;
+                const loadDate = localStorage.getItem('digil_anagrafica_date');
+                const dateStr = loadDate ? new Date(loadDate).toLocaleString('it-IT') : 'ora';
+                
+                statusSpan.textContent = `✅ Anagrafica caricata (${deviceCount} dispositivi)`;
+                statusSpan.style.color = '#28a745';
+                
+                statsInfo.textContent = `Totale dispositivi: ${deviceCount} | Caricata: ${dateStr}`;
+                statsDiv.style.display = 'block';
+                
+                // Aggiorna il bottone toggle con il conteggio
+                const isOpen = document.getElementById('anagraficaSection').style.display !== 'none';
+                toggleBtn.innerHTML = `📂 Gestione Anagrafica (${deviceCount} dispositivi) ${isOpen ? '▲' : '▼'}`;
+            } else {
+                statusSpan.textContent = 'Nessuna anagrafica caricata';
+                statusSpan.style.color = '#6c757d';
+                statsDiv.style.display = 'none';
+                
+                // Reset del bottone toggle
+                const isOpen = document.getElementById('anagraficaSection').style.display !== 'none';
+                toggleBtn.innerHTML = `📂 Gestione Anagrafica ${isOpen ? '▲' : '▼'}`;
+            }
+        }
     </script>
 </body>
 </html>
