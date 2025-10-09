@@ -629,8 +629,9 @@ class DigilTestService:
             # Analizza metriche ricevute dalla telemetria
             received_metrics = set()
             metric_values = {}
-            
-            if success_tm and 'tm' in tm_data and tm_data['tm']:
+
+            # Aggiungi controllo tipo per tm_data
+            if success_tm and isinstance(tm_data, dict) and 'tm' in tm_data and tm_data['tm']:
                 log_step(f"Trovate {len(tm_data['tm'])} letture dalla telemetria")
                 
                 for tm_entry in tm_data['tm']:
@@ -650,21 +651,25 @@ class DigilTestService:
                                 'timestamp': tm_entry.get('timestamp', ''),
                                 'source': 'telemetry'
                             })
-            
+            elif not success_tm:
+                # Log dell'errore se la telemetria fallisce
+                log_step(f"Errore telemetria: {tm_data}", False)
+
             # Ottieni definizioni metriche
             metrics_def = self.get_metric_definitions(num_sensors)
             expected_metrics = metrics_def['all'] if isinstance(metrics_def, dict) else metrics_def
-            
+
             # Verifica quali metriche mancano dopo la prima chiamata
             missing_after_tm = [m for m in expected_metrics if m not in received_metrics]
-            
+
             if missing_after_tm:
                 log_step(f"Mancano {len(missing_after_tm)} metriche dalla telemetria, controllo lastval...")
                 
                 # Seconda chiamata: lastval per le metriche mancanti
                 success_lv, lastval_data = self.get_lastval_data(device_id, ui)
                 
-                if success_lv and 'lastVal' in lastval_data:
+                # Aggiungi controllo tipo anche per lastval_data
+                if success_lv and isinstance(lastval_data, dict) and 'lastVal' in lastval_data:
                     log_step(f"Trovati {len(lastval_data.get('lastVal', []))} record da lastval")
                     
                     for entry in lastval_data.get('lastVal', []):
@@ -686,6 +691,8 @@ class DigilTestService:
                                         'source': 'lastval'
                                     })
                                     log_step(f"✓ Trovata {metric_type} da lastval: {metric_val}")
+                elif not success_lv:
+                    log_step(f"Errore lastval: {lastval_data}", False)
             else:
                 log_step("Tutte le metriche trovate dalla telemetria!")
             
