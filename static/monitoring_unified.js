@@ -197,11 +197,29 @@ function startMonitoring() {
     document.getElementById('startBtn').disabled = true;
     document.getElementById('stopBtn').disabled = false;
     
+    // 🔥 LEGGI CONFIGURAZIONE FILTRI
+    const historicalModeCheckbox = document.getElementById('historicalMode');
+    const timeWindowSelect = document.getElementById('timeWindow');
+    
+    const currentHistoricalMode = historicalModeCheckbox ? historicalModeCheckbox.checked : false;
+    const currentTimeWindow = timeWindowSelect ? parseInt(timeWindowSelect.value) : 10;
+    
+    console.log('📡 Avvio monitoraggio con configurazione:', {
+        device_id: deviceId,
+        num_sensors: numSensors,
+        ui: ui,
+        timeout_minutes: timeout,
+        historical_mode: currentHistoricalMode,
+        time_window: currentTimeWindow
+    });
+    
     socket.emit('start_unified_monitoring', {
         device_id: deviceId,
         num_sensors: numSensors,
         ui: ui,
-        timeout_minutes: timeout
+        timeout_minutes: timeout,
+        historical_mode: currentHistoricalMode,
+        time_window: currentTimeWindow 
     });
 }
 
@@ -422,28 +440,72 @@ function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
     
+    // NUOVO: Estrai info validazione
+    const validation = data.validation || {};
+    const isValid = validation.valid;
+    const alarmType = validation.alarm_type || 'unknown';
+    
+    // NUOVO: Determina icona e stile in base alla validazione
+    let validationIcon = '🚨';
+    let validationStyle = '';
+    let validationInfo = '';
+    
+    if (validation && validation.vendor_name) {
+        if (isValid === true) {
+            // Allarme VALIDO - flag è true
+            validationIcon = '✅ 🚨';
+            validationStyle = 'background: #d4edda; border-left: 4px solid #28a745;';
+            validationInfo = `<br><small style="color: #155724;">
+                <strong>✓ Validato:</strong> ${validation.vendor_name} = true<br>
+                <strong>Timestamp flag:</strong> ${validation.flag_timestamp}
+            </small>`;
+        } else if (isValid === false) {
+            // Allarme NON VALIDO - flag è false
+            validationIcon = '⚠️ 🚨';
+            validationStyle = 'background: #fff3cd; border-left: 4px solid #ffc107;';
+            validationInfo = `<br><small style="color: #856404;">
+                <strong>⚠ Non validato:</strong> ${validation.vendor_name} = false<br>
+                ${validation.message}
+            </small>`;
+        } else {
+            // Flag non trovato
+            validationIcon = '❓ 🚨';
+            validationStyle = 'background: #f8d7da; border-left: 4px solid #dc3545;';
+            validationInfo = `<br><small style="color: #721c24;">
+                <strong>✗ Flag mancante:</strong> ${validation.vendor_name} non trovato<br>
+                ${validation.message}
+            </small>`;
+        }
+    }
+    
     // Controlla se l'allarme esiste già
     let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
     
     if (existingItem) {
         // Aggiorna l'elemento esistente
+        existingItem.style = validationStyle;
         existingItem.innerHTML = `
-            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
+            <strong>${validationIcon} ${data.alarm_type} - ${friendlyName}</strong><br>
             📍 ${data.timestamp} - Valore: ${data.value}
+            ${validationInfo}
         `;
+        
         // Flash per indicare aggiornamento
+        const originalBg = existingItem.style.backgroundColor;
         existingItem.style.backgroundColor = '#ffffcc';
         setTimeout(() => {
-            existingItem.style.backgroundColor = '';
+            existingItem.style.backgroundColor = originalBg;
         }, 500);
     } else {
         // Crea nuovo elemento
         const itemDiv = document.createElement('div');
         itemDiv.id = `alarm-${data.alarm_type}`;
         itemDiv.className = 'item found';
+        itemDiv.style = validationStyle;
         itemDiv.innerHTML = `
-            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
+            <strong>${validationIcon} ${data.alarm_type} - ${friendlyName}</strong><br>
             📍 ${data.timestamp} - Valore: ${data.value}
+            ${validationInfo}
         `;
         foundDiv.appendChild(itemDiv);
     }
@@ -451,7 +513,7 @@ function addFoundAlarm(data) {
     // Salva i dati SEMPRE
     foundAlarmsData[data.alarm_type] = data;
     
-    // Controlla se deve essere nascosto visualmente (solo per display locale)
+    // Controlla se deve essere nascosto visivamente (solo per display locale)
     if (isDataTooOld(data.timestamp) && !historicalMode) {
         const element = document.getElementById(`alarm-${data.alarm_type}`);
         if (element) {
@@ -545,39 +607,68 @@ function toggleHistoricalMode() {
         // Modalità storica
         timeWindowContainer.style.opacity = '0.5';
         timeWindowContainer.style.pointerEvents = 'none';
-        modeDescription.innerHTML = '📚 Modalità Storica: mostra tutti i dati disponibili';
+        modeDescription.innerHTML = '📚 Modalità Storica: mostra TUTTI i dati disponibili (nessun filtro)';
         modeDescription.style.color = '#17a2b8';
+        modeDescription.style.fontWeight = 'bold';
     } else {
         // Modalità live
         timeWindowContainer.style.opacity = '1';
         timeWindowContainer.style.pointerEvents = 'auto';
         const minutes = document.getElementById('timeWindow').value;
+        timeWindowMinutes = parseInt(minutes);  // Aggiorna variabile globale
         modeDescription.innerHTML = `🔄 Modalità Live: mostra solo dati degli ultimi ${minutes} minuti`;
         modeDescription.style.color = '#6c757d';
+        modeDescription.style.fontWeight = 'normal';
     }
     
-    // Invia aggiornamento al server
-    if (socket && socket.connected) {
-        console.log('📤 Invio update_time_filter al server con:', {
-            historical_mode: historicalMode,
-            time_window_minutes: timeWindowMinutes
-        });
-        
-        socket.emit('update_time_filter', {
-            historical_mode: historicalMode,
-            time_window_minutes: timeWindowMinutes
-        });
-        
-        // Aspetta conferma
-        socket.once('filter_updated', function(data) {
-            console.log('✅ Conferma dal server - Filtro aggiornato:', data);
-        });
+    // 🔥 CONTROLLA SE IL MONITORAGGIO È ATTIVO
+    const stopBtn = document.getElementById('stopBtn');
+    const isMonitoringActive = stopBtn && !stopBtn.disabled;
+    
+    if (isMonitoringActive) {
+        // Il monitoraggio è attivo - mostra conferma e riavvia
+        if (confirm('⚠️ Cambiare modalità richiede il riavvio del monitoraggio.\n\nI dati attuali verranno persi. Continuare?')) {
+            console.log('🔄 Riavvio monitoraggio con nuova configurazione...');
+            
+            // Ferma il monitoraggio
+            stopMonitoring();
+            
+            // Pulisci i dati visualizzati
+            foundMetricsData = {};
+            foundAlarmsData = {};
+            document.getElementById('foundMetrics').innerHTML = '';
+            document.getElementById('foundAlarms').innerHTML = '';
+            
+            // Riavvia dopo 500ms
+            setTimeout(() => {
+                startMonitoring();
+            }, 500);
+        } else {
+            // Annulla il cambiamento
+            checkbox.checked = !historicalMode;
+            historicalMode = !historicalMode;
+        }
     } else {
-        console.error('❌ Socket non connesso! Impossibile aggiornare filtro sul server');
+        // Monitoraggio non attivo - aggiorna solo via socket
+        if (socket && socket.connected) {
+            console.log('📤 Invio update_time_filter al server con:', {
+                historical_mode: historicalMode,
+                time_window_minutes: timeWindowMinutes
+            });
+            
+            socket.emit('update_time_filter', {
+                historical_mode: historicalMode,
+                time_window_minutes: timeWindowMinutes
+            });
+            
+            socket.once('filter_updated', function(data) {
+                console.log('✅ Conferma dal server - Filtro aggiornato:', data);
+            });
+        }
+        
+        // Riapplica filtro locale
+        refilterExistingData();
     }
-    
-    // Riapplica il filtro ai dati esistenti localmente
-    refilterExistingData();
 }
 
 function updateTimeWindow() {
@@ -599,16 +690,28 @@ function updateTimeWindow() {
     
     modeDescription.innerHTML = `🔄 Modalità Live: mostra solo dati degli ultimi ${timeText}`;
     
-    // Invia aggiornamento al server
-    if (socket) {
-        socket.emit('update_time_filter', {
-            historical_mode: historicalMode,
-            time_window_minutes: timeWindowMinutes
-        });
-    }
+    // 🔥 CONTROLLA SE IL MONITORAGGIO È ATTIVO
+    const stopBtn = document.getElementById('stopBtn');
+    const isMonitoringActive = stopBtn && !stopBtn.disabled;
     
-    // Riapplica il filtro ai dati esistenti
-    refilterExistingData();
+    if (isMonitoringActive) {
+        // Riavvia se necessario
+        if (confirm('⚠️ Cambiare la finestra temporale richiede il riavvio del monitoraggio.\n\nContinuare?')) {
+            stopMonitoring();
+            document.getElementById('foundMetrics').innerHTML = '';
+            document.getElementById('foundAlarms').innerHTML = '';
+            setTimeout(() => startMonitoring(), 500);
+        }
+    } else {
+        // Aggiorna solo il filtro
+        if (socket && socket.connected) {
+            socket.emit('update_time_filter', {
+                historical_mode: historicalMode,
+                time_window_minutes: timeWindowMinutes
+            });
+        }
+        refilterExistingData();
+    }
 }
 
 function isDataTooOld(timestampStr) {

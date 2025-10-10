@@ -10,23 +10,197 @@ class AlarmMonitor:
         self.socketio = socketio
         self.monitoring_threads = {}
         self.stop_events = {}
+        
+        # MAPPATURA CORRETTA: EGM allarmi -> EAM flag "Fault" (non min/max)
+        self.alarm_to_flag_mapping = {
+            # F4A_L1
+            'EGM_OUT_SENS_23_VAR_36': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_13',  # Manteniamo per reference
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L1'  # 🔥 CORRETTO!
+                },
+                'friendly': 'F4A_L1'
+            },
+            # F4B_L1
+            'EGM_OUT_SENS_23_VAR_38': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_15',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L1'
+                },
+                'friendly': 'F4B_L1'
+            },
+            # F8A_L1
+            'EGM_OUT_SENS_23_VAR_40': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_17',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L1'
+                },
+                'friendly': 'F8A_L1'
+            },
+            # F8B_L1
+            'EGM_OUT_SENS_23_VAR_42': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_19',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L1'
+                },
+                'friendly': 'F8B_L1'
+            },
+            # F12A_L1
+            'EGM_OUT_SENS_23_VAR_32': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_21',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L1'
+                },
+                'friendly': 'F12A_L1'
+            },
+            # F12B_L1
+            'EGM_OUT_SENS_23_VAR_34': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_23',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L1'
+                },
+                'friendly': 'F12B_L1'
+            },
+            # F4A_L2
+            'EGM_OUT_SENS_23_VAR_37': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_25',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L2'
+                },
+                'friendly': 'F4A_L2'
+            },
+            # F4B_L2
+            'EGM_OUT_SENS_23_VAR_39': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_27',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L2'
+                },
+                'friendly': 'F4B_L2'
+            },
+            # F8A_L2
+            'EGM_OUT_SENS_23_VAR_41': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_29',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L2'
+                },
+                'friendly': 'F8A_L2'
+            },
+            # F8B_L2
+            'EGM_OUT_SENS_23_VAR_43': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_31',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L2'
+                },
+                'friendly': 'F8B_L2'
+            },
+            # F12A_L2
+            'EGM_OUT_SENS_23_VAR_33': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_33',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L2'
+                },
+                'friendly': 'F12A_L2'
+            },
+            # F12B_L2
+            'EGM_OUT_SENS_23_VAR_35': {
+                'flag': {
+                    'metricType': 'EAM_OUT_ALG_19_VAR_35',
+                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L2'
+                },
+                'friendly': 'F12B_L2'
+            }
+        }
+    
+    def check_alarm_validation(self, egm_alarm_key, alarm_value, aggregated_diags):
+        """
+        Verifica se un allarme EGM ha il corrispondente flag EAM a true
+        
+        Args:
+            egm_alarm_key: La chiave dell'allarme EGM (es. 'EGM_OUT_SENS_23_VAR_42')
+            alarm_value: Il valore dell'allarme ricevuto
+            aggregated_diags: I 'diags' dall'API aggregata
+            
+        Returns:
+            dict con info sulla validazione
+        """
+        if egm_alarm_key not in self.alarm_to_flag_mapping:
+            return {
+                'valid': None,  # Non applicabile
+                'alarm_type': 'fault',
+                'message': f'Allarme {egm_alarm_key} non mappato per validazione'
+            }
+        
+        mapping = self.alarm_to_flag_mapping[egm_alarm_key]
+        friendly_name = mapping['friendly']
+        flag_info = mapping['flag']
+        
+        # Ora abbiamo solo un flag "Fault" (non più min/max)
+        metric_type = flag_info['metricType']
+        vendor_name = flag_info['vendorName']
+        
+        # Cerca il flag nell'API aggregata usando il vendorName nei diags
+        if vendor_name in aggregated_diags:
+            flag_data = aggregated_diags[vendor_name]
+            flag_value = flag_data.get('value', False)
+            flag_timestamp = flag_data.get('timestamp', None)
+            
+            # Converti timestamp se necessario
+            if flag_timestamp:
+                from datetime import datetime
+                if flag_timestamp > 10000000000:  # Millisecondi
+                    flag_timestamp = flag_timestamp / 1000
+                flag_time_str = datetime.fromtimestamp(flag_timestamp).strftime('%d/%m/%y - %H:%M:%S')
+            else:
+                flag_time_str = 'N/A'
+            
+            return {
+                'valid': flag_value == True,
+                'alarm_type': 'fault',
+                'metric_type': metric_type,
+                'vendor_name': vendor_name,
+                'flag_value': flag_value,
+                'flag_timestamp': flag_time_str,
+                'friendly_name': friendly_name,
+                'message': f"Flag FAULT: {vendor_name} = {flag_value}"
+            }
+        else:
+            return {
+                'valid': False,
+                'alarm_type': 'fault',
+                'metric_type': metric_type,
+                'vendor_name': vendor_name,
+                'flag_value': None,
+                'flag_timestamp': None,
+                'friendly_name': friendly_name,
+                'message': f"⚠️ Flag {vendor_name} non trovato nell'API aggregata"
+            }
     
     def start_unified_monitoring(self, sid, device_id, num_sensors, ui, timeout_minutes=10):
         """Avvia il monitoraggio unificato per metriche e allarmi"""
         
-        # Inizializza filtro PRIMA di avviare il thread
+        # INIZIALIZZA session_filters SE NON ESISTE
         if not hasattr(self, 'session_filters'):
             self.session_filters = {}
         
-        # Se non esiste filtro per questa sessione, crea default
-        if sid not in self.session_filters:
-            self.session_filters[sid] = {
-                'historical_mode': False,
-                'time_window_minutes': 10
-            }
-            print(f"📝 Filtro inizializzato con default per sid {sid}")
+        # CREA FILTRO CON VALORI DI DEFAULT
+        # Controlla se ci sono parametri nel thread config (passati dal frontend)
+        if sid in self.monitoring_threads:
+            thread_config = self.monitoring_threads[sid]
+            historical_mode = thread_config.get('historical_mode', False)
+            time_window = thread_config.get('time_window', 10)
         else:
-            print(f"✅ Mantengo filtro esistente per sid {sid}: {self.session_filters[sid]}")
+            # Default: modalità live con 10 minuti
+            historical_mode = False
+            time_window = 10
+        
+        self.session_filters[sid] = {
+            'historical_mode': historical_mode,
+            'time_window_minutes': time_window
+        }
+        
+        print(f"📝 Filtro inizializzato per sid {sid}:")
+        print(f"   Historical mode: {historical_mode}")
+        print(f"   Time window: {time_window} minuti")
         
         # Crea evento di stop per questo client
         stop_event = Event()
@@ -164,6 +338,18 @@ class AlarmMonitor:
                 break
             
             try:
+                # 🔥 CARICA API AGGREGATA ALL'INIZIO per avere sempre i diags disponibili
+                agg_data = None
+                success_agg, agg_data = digil_test_service.get_device_aggregated_data(device_id)
+                
+                if not success_agg or not agg_data:
+                    print(f"⚠️ API aggregata non disponibile (elapsed: {elapsed.total_seconds():.0f}s)")
+                    agg_data = {'diags': {}, 'measures': {}}  # Crea struttura vuota per evitare errori
+                else:
+                    diags_count = len(agg_data.get('diags', {}))
+                    measures_count = len(agg_data.get('measures', {}))
+                    print(f"✅ API aggregata OK: {diags_count} diags, {measures_count} measures")
+                
                 # Calcola range temporale
                 end_timestamp = int(current_time.timestamp())
                 start_timestamp = end_timestamp - 300  # Ultimi 5 minuti
@@ -256,15 +442,25 @@ class AlarmMonitor:
                                     if metric_type not in all_received_alarms:
                                         all_received_alarms[metric_type] = metric_val
                                     
+                                    # 🔥 VALIDA L'ALLARME con i diags (ora sempre disponibili!)
+                                    validation = None
+                                    if agg_data and 'diags' in agg_data:
+                                        validation = self.check_alarm_validation(
+                                            metric_type, 
+                                            metric_val, 
+                                            agg_data['diags']
+                                        )
+                                    
                                     if metric_type in expected_alarms:
                                         if metric_type not in found_alarms:
                                             found_alarms[metric_type] = metric_val
                                             alarm_entry = {
                                                 'alarm_type': metric_type,
                                                 'value': metric_val,
-                                                'timestamp': formatted_timestamp,  # NO progressivo per allarmi
+                                                'timestamp': formatted_timestamp,
                                                 'elapsed': str(elapsed).split('.')[0],
-                                                'is_expected': True
+                                                'is_expected': True,
+                                                'validation': validation  # 🔥 CAMPO VALIDAZIONE
                                             }
                                             event_history.append(('alarm', alarm_entry))
                                             self.socketio.emit('alarm_found', alarm_entry, room=sid)
@@ -274,9 +470,10 @@ class AlarmMonitor:
                                             other_alarm_entry = {
                                                 'alarm_type': metric_type,
                                                 'value': metric_val,
-                                                'timestamp': formatted_timestamp,  # NO progressivo per allarmi
+                                                'timestamp': formatted_timestamp,
                                                 'elapsed': str(elapsed).split('.')[0],
-                                                'is_expected': False
+                                                'is_expected': False,
+                                                'validation': validation  # 🔥 CAMPO VALIDAZIONE
                                             }
                                             event_history.append(('other_alarm', other_alarm_entry))
                                             self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
@@ -305,102 +502,100 @@ class AlarmMonitor:
                                         }, room=sid)
                             expected_alarms = new_expected
 
-                # Check 3: API aggregata (solo per metriche che non hanno MAI ricevuto dati)
+                # Check 3: Usa measures dall'API aggregata (già caricata) per metriche/allarmi mancanti
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
 
-                should_check_aggregated = (
-                    (missing_metrics or missing_alarms) and
-                    elapsed.total_seconds() > 60 and
-                    (last_aggregated_check is None or 
-                    (current_time - last_aggregated_check).total_seconds() > 30)
-                )
+                if (missing_metrics or missing_alarms) and agg_data and 'measures' in agg_data:
+                    measures = agg_data['measures']
+                    
+                    # Processa solo metriche mai ricevute
+                    for measure_key, measure_data in measures.items():
+                        if measure_key in digil_test_service.reverse_metrics_mapping:
+                            eit_metric = digil_test_service.reverse_metrics_mapping[measure_key]
+                            
+                            if eit_metric in missing_metrics and measure_data and isinstance(measure_data, dict) and len(measure_data) > 0:
+                                measure_timestamp = measure_data.get('timestamp', 0) / 1000
 
-                if should_check_aggregated:
-                    last_aggregated_check = current_time
-                    
-                    success_agg, agg_data = digil_test_service.get_device_aggregated_data(device_id)
-                    
-                    if success_agg and 'measures' in agg_data:
-                        measures = agg_data['measures']
-                        
-                        # Processa solo metriche mai ricevute
-                        for measure_key, measure_data in measures.items():
-                            if measure_key in digil_test_service.reverse_metrics_mapping:
-                                eit_metric = digil_test_service.reverse_metrics_mapping[measure_key]
+                                if self.should_filter_data(sid, measure_timestamp):
+                                    continue
+
+                                # Formatta timestamp con data
+                                measure_datetime = datetime.fromtimestamp(measure_timestamp)
+                                display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
                                 
-                                if eit_metric in missing_metrics and measure_data and isinstance(measure_data, dict) and len(measure_data) > 0:
-                                    measure_timestamp = measure_data.get('timestamp', 0) / 1000
+                                if 'avg' in measure_data:
+                                    value = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
+                                elif 'value' in measure_data:
+                                    value = str(measure_data.get('value', 'N/A'))
+                                else:
+                                    continue
+                                
+                                metrics_with_data.add(eit_metric)
+                                
+                                metric_entry = {
+                                    'metric_type': eit_metric,
+                                    'value': value,
+                                    'timestamp': display_time,
+                                    'elapsed': str(elapsed).split('.')[0],
+                                    'source': 'aggregated'
+                                }
+                                event_history.append(('metric', metric_entry))
+                                self.socketio.emit('metric_found', metric_entry, room=sid)
+                    
+                    # Gestione allarmi aggregati
+                    measures_to_alarms = {
+                        'SENS_Digil2_TC_F12A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_32',
+                        'SENS_Digil2_TC_F12A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_33',
+                        'SENS_Digil2_TC_F12B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_34',
+                        'SENS_Digil2_TC_F12B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_35',
+                        'SENS_Digil2_TC_F4A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_36',
+                        'SENS_Digil2_TC_F4A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_37',
+                        'SENS_Digil2_TC_F4B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_38',
+                        'SENS_Digil2_TC_F4B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_39',
+                        'SENS_Digil2_TC_F8A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_40',
+                        'SENS_Digil2_TC_F8A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_41',
+                        'SENS_Digil2_TC_F8B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_42',
+                        'SENS_Digil2_TC_F8B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_43',
+                        'SENS_Digil2_Inc_X_IN_ALARM': 'EGM_OUT_SENS_23_VAR_30',
+                        'SENS_Digil2_Inc_Y_IN_ALARM': 'EGM_OUT_SENS_23_VAR_31'
+                    }
+                    
+                    for measure_key, alarm_key in measures_to_alarms.items():
+                        if alarm_key in missing_alarms and measure_key in measures:
+                            measure_data = measures[measure_key]
+                            if measure_data and 'value' in measure_data:
+                                measure_timestamp = measure_data.get('timestamp', 0) / 1000
 
-                                    if self.should_filter_data(sid, measure_timestamp):
-                                        continue
+                                if self.should_filter_data(sid, measure_timestamp):
+                                    continue
 
-                                    # Formatta timestamp con data
-                                    measure_datetime = datetime.fromtimestamp(measure_timestamp)
-                                    display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
-                                    
-                                    if 'avg' in measure_data:
-                                        value = f"min:{measure_data.get('min', 'N/A')}, avg:{measure_data.get('avg', 'N/A')}, max:{measure_data.get('max', 'N/A')}"
-                                    elif 'value' in measure_data:
-                                        value = str(measure_data.get('value', 'N/A'))
-                                    else:
-                                        continue
-                                    
-                                    metrics_with_data.add(eit_metric)
-                                    
-                                    metric_entry = {
-                                        'metric_type': eit_metric,
-                                        'value': value,
-                                        'timestamp': display_time,
-                                        'elapsed': str(elapsed).split('.')[0],
-                                        'source': 'aggregated'
-                                    }
-                                    event_history.append(('metric', metric_entry))
-                                    self.socketio.emit('metric_found', metric_entry, room=sid)
-                        
-                        # Gestione allarmi aggregati
-                        measures_to_alarms = {
-                            'SENS_Digil2_TC_F12A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_32',
-                            'SENS_Digil2_TC_F12A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_33',
-                            'SENS_Digil2_TC_F12B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_34',
-                            'SENS_Digil2_TC_F12B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_35',
-                            'SENS_Digil2_TC_F4A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_36',
-                            'SENS_Digil2_TC_F4A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_37',
-                            'SENS_Digil2_TC_F4B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_38',
-                            'SENS_Digil2_TC_F4B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_39',
-                            'SENS_Digil2_TC_F8A_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_40',
-                            'SENS_Digil2_TC_F8A_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_41',
-                            'SENS_Digil2_TC_F8B_L1_IN_ALARM': 'EGM_OUT_SENS_23_VAR_42',
-                            'SENS_Digil2_TC_F8B_L2_IN_ALARM': 'EGM_OUT_SENS_23_VAR_43',
-                            'SENS_Digil2_Inc_X_IN_ALARM': 'EGM_OUT_SENS_23_VAR_30',
-                            'SENS_Digil2_Inc_Y_IN_ALARM': 'EGM_OUT_SENS_23_VAR_31'
-                        }
-                        
-                        for measure_key, alarm_key in measures_to_alarms.items():
-                            if alarm_key in missing_alarms and measure_key in measures:
-                                measure_data = measures[measure_key]
-                                if measure_data and 'value' in measure_data:
-                                    measure_timestamp = measure_data.get('timestamp', 0) / 1000
-
-                                    if self.should_filter_data(sid, measure_timestamp):
-                                        continue
-
-                                    # Formatta timestamp con formato unificato
-                                    measure_datetime = datetime.fromtimestamp(measure_timestamp)
-                                    display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
-                                    
-                                    found_alarms[alarm_key] = measure_data['value']
-                                    
-                                    alarm_entry = {
-                                        'alarm_type': alarm_key,
-                                        'value': measure_data['value'],
-                                        'timestamp': display_time,
-                                        'elapsed': str(elapsed).split('.')[0],
-                                        'is_expected': True,
-                                        'source': 'aggregated'
-                                    }
-                                    event_history.append(('alarm', alarm_entry))
-                                    self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                # Formatta timestamp con formato unificato
+                                measure_datetime = datetime.fromtimestamp(measure_timestamp)
+                                display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
+                                
+                                found_alarms[alarm_key] = measure_data['value']
+                                
+                                # 🔥 VALIDA anche gli allarmi dall'API aggregata
+                                validation = None
+                                if 'diags' in agg_data:
+                                    validation = self.check_alarm_validation(
+                                        alarm_key,
+                                        measure_data['value'],
+                                        agg_data['diags']
+                                    )
+                                
+                                alarm_entry = {
+                                    'alarm_type': alarm_key,
+                                    'value': measure_data['value'],
+                                    'timestamp': display_time,
+                                    'elapsed': str(elapsed).split('.')[0],
+                                    'is_expected': True,
+                                    'source': 'aggregated',
+                                    'validation': validation  # 🔥 CAMPO VALIDAZIONE
+                                }
+                                event_history.append(('alarm', alarm_entry))
+                                self.socketio.emit('alarm_found', alarm_entry, room=sid)
                 
                 # Aggiornamenti di stato
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
@@ -440,6 +635,9 @@ class AlarmMonitor:
                     break
                     
             except Exception as e:
+                import traceback
+                print(f"❌ Errore nel loop di monitoraggio: {e}")
+                print(traceback.format_exc())
                 self.socketio.emit('monitoring_error', {
                     'error': str(e)
                 }, room=sid)

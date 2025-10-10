@@ -870,11 +870,37 @@ def handle_start_unified_monitoring(data):
     ui = data.get('ui', 'Lazio')
     timeout_minutes = data.get('timeout_minutes', 10)
     
-    print(f'Avvio monitoraggio unificato per {device_id}')
+    # NUOVO: Ricevi configurazione filtri dal frontend
+    historical_mode = data.get('historical_mode', False)
+    time_window = data.get('time_window', 10)
+    
+    print(f'📡 Avvio monitoraggio unificato per {device_id}')
+    print(f'   Historical mode: {historical_mode}')
+    print(f'   Time window: {time_window} minuti')
+    
+    # SALVA CONFIGURAZIONE PRIMA di avviare il thread
+    if not hasattr(alarm_monitor, 'monitoring_threads'):
+        alarm_monitor.monitoring_threads = {}
+    
+    alarm_monitor.monitoring_threads[request.sid] = {
+        'device_id': device_id,
+        'num_sensors': num_sensors,
+        'ui': ui,
+        'timeout': timeout_minutes,
+        'historical_mode': historical_mode,  # 🔥 NUOVO
+        'time_window': time_window  # 🔥 NUOVO
+    }
+    
+    # Avvia monitoraggio
     alarm_monitor.start_unified_monitoring(
         request.sid, device_id, num_sensors, ui, timeout_minutes
     )
-    emit('monitoring_started', {'message': 'Monitoraggio unificato avviato'})
+    
+    emit('monitoring_started', {
+        'message': 'Monitoraggio avviato',
+        'historical_mode': historical_mode,
+        'time_window': time_window
+    })
 
 @socketio.on('stop_monitoring')
 def handle_stop_monitoring():
