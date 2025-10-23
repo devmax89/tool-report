@@ -790,7 +790,19 @@ class DigilTestService:
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
                             source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
+                            
+                            # 🆕 NUOVO: Formatta timestamp
+                            timestamp_str = ""
+                            if latest.get('timestamp'):
+                                try:
+                                    ts = latest['timestamp']
+                                    ts_seconds = ts / 1000 if ts > 10000000000 else ts
+                                    dt = datetime.fromtimestamp(ts_seconds)
+                                    timestamp_str = f" - {dt.strftime('%d/%m/%y %H:%M:%S')}"
+                                except:
+                                    pass
+                            
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{timestamp_str}{source_tag}")
                     else:
                         results['metrics_by_category']['weather']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -804,7 +816,19 @@ class DigilTestService:
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
                             source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
+                            
+                            # 🆕 NUOVO: Formatta timestamp
+                            timestamp_str = ""
+                            if latest.get('timestamp'):
+                                try:
+                                    ts = latest['timestamp']
+                                    ts_seconds = ts / 1000 if ts > 10000000000 else ts
+                                    dt = datetime.fromtimestamp(ts_seconds)
+                                    timestamp_str = f" - {dt.strftime('%d/%m/%y %H:%M:%S')}"
+                                except:
+                                    pass
+                            
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{timestamp_str}{source_tag}")
                     else:
                         results['metrics_by_category']['junction_box']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -818,7 +842,19 @@ class DigilTestService:
                         if metric in metric_values and metric_values[metric]:
                             latest = metric_values[metric][-1]
                             source_tag = f" [{latest.get('source', '')}]" if latest.get('source') else ""
-                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{source_tag}")
+                            
+                            # 🆕 NUOVO: Formatta timestamp
+                            timestamp_str = ""
+                            if latest.get('timestamp'):
+                                try:
+                                    ts = latest['timestamp']
+                                    ts_seconds = ts / 1000 if ts > 10000000000 else ts
+                                    dt = datetime.fromtimestamp(ts_seconds)
+                                    timestamp_str = f" - {dt.strftime('%d/%m/%y %H:%M:%S')}"
+                                except:
+                                    pass
+                            
+                            log_step(f"✓ {metric} ({sens_name}): {latest['value']}{timestamp_str}{source_tag}")
                     else:
                         results['metrics_by_category']['load']['missing'].append(metric)
                         log_step(f"✗ {metric} ({sens_name}): NON RICEVUTA", False)
@@ -1026,13 +1062,19 @@ class DigilTestService:
 
             if 'lastVal' in lastval_data and lastval_data['lastVal']:
                 for entry in lastval_data['lastVal']:
+                    entry_timestamp = entry.get('timestamp', 0)  # 🆕 NUOVO
+                    
                     if 'metrics' in entry:
                         for metric in entry['metrics']:
                             metric_type = metric.get('metricType', '')
                             metric_val = metric.get('val', '')
 
                             if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
-                                received_alarms[metric_type] = metric_val
+                                # 🆕 NUOVO: Salva sia valore che timestamp
+                                received_alarms[metric_type] = {
+                                    'value': metric_val,
+                                    'timestamp': entry_timestamp
+                                }
 
             # Definisci allarmi attesi base
             required_alarms = []
@@ -1125,7 +1167,11 @@ class DigilTestService:
                         if alarm_key in missing_after_lastval and measure_key in measures:
                             measure_data = measures[measure_key]
                             if measure_data and 'value' in measure_data:
-                                received_alarms[alarm_key] = measure_data['value']
+                                # 🆕 NUOVO: Salva sia valore che timestamp
+                                received_alarms[alarm_key] = {
+                                    'value': measure_data['value'],
+                                    'timestamp': measure_data.get('timestamp', 0)
+                                }
                                 desc = alarm_mapping.get(alarm_key, alarm_key)
                                 log_step(f"   ✓ Recuperato {alarm_key} ({desc}): {measure_data['value']} [da API aggregata]")
                 else:
@@ -1143,17 +1189,38 @@ class DigilTestService:
                 desc = alarm_mapping.get(expected, expected)
                 if expected in received_alarms:
                     found_alarms.append(expected)
-                    value = received_alarms[expected]
-                    log_step(f"✓ {expected} ({desc}): {value}")
+                    alarm_info = received_alarms[expected]
+                    
+                    # Gestisci sia valori semplici che dict con timestamp
+                    if isinstance(alarm_info, dict):
+                        value = alarm_info.get('value', alarm_info)
+                        timestamp = alarm_info.get('timestamp')
+                    else:
+                        value = alarm_info
+                        timestamp = None
+                    
+                    # 🆕 NUOVO: Formatta timestamp
+                    timestamp_str = ""
+                    if timestamp:
+                        try:
+                            ts_seconds = timestamp / 1000 if timestamp > 10000000000 else timestamp
+                            dt = datetime.fromtimestamp(ts_seconds)
+                            timestamp_str = f" - {dt.strftime('%d/%m/%y %H:%M:%S')}"
+                        except:
+                            pass
+                    
+                    log_step(f"✓ {expected} ({desc}): {value}{timestamp_str}")
                     results['alarm_values'][expected] = value
                 else:
                     missing_alarms.append(expected)
                     log_step(f"✗ {expected} ({desc}): NON TROVATO", False)
 
             # Raccogli altri allarmi non attesi
-            for alarm_key, alarm_value in received_alarms.items():
+            for alarm_key, alarm_info in received_alarms.items():
                 if alarm_key not in required_alarms:
                     desc = alarm_mapping.get(alarm_key, "Sconosciuto")
+                    # Estrai valore se è un dict
+                    alarm_value = alarm_info.get('value', alarm_info) if isinstance(alarm_info, dict) else alarm_info
                     other_alarms[alarm_key] = alarm_value
 
             # Mostra altri allarmi trovati
@@ -1161,7 +1228,20 @@ class DigilTestService:
                 log_step("=== Altri Allarmi Trovati ===")
                 for alarm_key, alarm_value in other_alarms.items():
                     desc = alarm_mapping.get(alarm_key, "Sconosciuto")
-                    log_step(f"ℹ️ {alarm_key} ({desc}): {alarm_value}")
+                    
+                    # Recupera timestamp se disponibile
+                    timestamp_str = ""
+                    if alarm_key in received_alarms and isinstance(received_alarms[alarm_key], dict):
+                        timestamp = received_alarms[alarm_key].get('timestamp')
+                        if timestamp:
+                            try:
+                                ts_seconds = timestamp / 1000 if timestamp > 10000000000 else timestamp
+                                dt = datetime.fromtimestamp(ts_seconds)
+                                timestamp_str = f" - {dt.strftime('%d/%m/%y %H:%M:%S')}"
+                            except:
+                                pass
+                    
+                    log_step(f"ℹ️ {alarm_key} ({desc}): {alarm_value}{timestamp_str}")
 
             # Imposta i risultati
             results['found_alarms'] = found_alarms
