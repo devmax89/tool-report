@@ -11,169 +11,205 @@ class AlarmMonitor:
         self.monitoring_threads = {}
         self.stop_events = {}
         
-        # MAPPATURA CORRETTA: EGM allarmi -> EAM flag "Fault" (non min/max)
+        # MAPPATURA COMPLETA: EGM allarmi -> tutti i flag EAM (Fault, Min, Max)
         self.alarm_to_flag_mapping = {
             # F4A_L1
             'EGM_OUT_SENS_23_VAR_36': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_13',  # Manteniamo per reference
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L1'  # 🔥 CORRETTO!
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F4A_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F4A_L1', 'type': 'max'}
+                ],
                 'friendly': 'F4A_L1'
             },
             # F4B_L1
             'EGM_OUT_SENS_23_VAR_38': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_15',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L1'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F4B_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F4B_L1', 'type': 'max'}
+                ],
                 'friendly': 'F4B_L1'
             },
             # F8A_L1
             'EGM_OUT_SENS_23_VAR_40': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_17',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L1'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F8A_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F8A_L1', 'type': 'max'}
+                ],
                 'friendly': 'F8A_L1'
             },
             # F8B_L1
             'EGM_OUT_SENS_23_VAR_42': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_19',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L1'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F8B_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F8B_L1', 'type': 'max'}
+                ],
                 'friendly': 'F8B_L1'
             },
             # F12A_L1
             'EGM_OUT_SENS_23_VAR_32': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_21',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L1'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F12A_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F12A_L1', 'type': 'max'}
+                ],
                 'friendly': 'F12A_L1'
             },
             # F12B_L1
             'EGM_OUT_SENS_23_VAR_34': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_23',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L1'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L1', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F12B_L1', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F12B_L1', 'type': 'max'}
+                ],
                 'friendly': 'F12B_L1'
             },
             # F4A_L2
             'EGM_OUT_SENS_23_VAR_37': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_25',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4A_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F4A_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F4A_L2', 'type': 'max'}
+                ],
                 'friendly': 'F4A_L2'
             },
             # F4B_L2
             'EGM_OUT_SENS_23_VAR_39': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_27',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F4B_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F4B_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F4B_L2', 'type': 'max'}
+                ],
                 'friendly': 'F4B_L2'
             },
             # F8A_L2
             'EGM_OUT_SENS_23_VAR_41': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_29',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8A_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F8A_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F8A_L2', 'type': 'max'}
+                ],
                 'friendly': 'F8A_L2'
             },
             # F8B_L2
             'EGM_OUT_SENS_23_VAR_43': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_31',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F8B_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F8B_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F8B_L2', 'type': 'max'}
+                ],
                 'friendly': 'F8B_L2'
             },
             # F12A_L2
             'EGM_OUT_SENS_23_VAR_33': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_33',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12A_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F12A_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F12A_L2', 'type': 'max'}
+                ],
                 'friendly': 'F12A_L2'
             },
             # F12B_L2
             'EGM_OUT_SENS_23_VAR_35': {
-                'flag': {
-                    'metricType': 'EAM_OUT_ALG_19_VAR_35',
-                    'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L2'
-                },
+                'flags': [
+                    {'vendorName': 'ALG_Digil2_Alm_Fault_TC_F12B_L2', 'type': 'fault'},
+                    {'vendorName': 'ALG_Digil2_Alm_Min_TC_F12B_L2', 'type': 'min'},
+                    {'vendorName': 'ALG_Digil2_Alm_Max_TC_F12B_L2', 'type': 'max'}
+                ],
                 'friendly': 'F12B_L2'
             }
         }
     
-    def check_alarm_validation(self, egm_alarm_key, alarm_value, aggregated_diags):
+    def check_alarm_validation(self, egm_alarm_key, alarm_value, thing_alarms):
         """
-        Verifica se un allarme EGM ha il corrispondente flag EAM a true
+        Verifica se un allarme EGM ha i corrispondenti flag EAM a true
+        """
+        print(f"🔍 DEBUG check_alarm_validation:")
+        print(f"   Allarme: {egm_alarm_key}")
+        print(f"   Valore: {alarm_value}")
+        print(f"   Flag disponibili: {len(thing_alarms)}")
         
-        Args:
-            egm_alarm_key: La chiave dell'allarme EGM (es. 'EGM_OUT_SENS_23_VAR_42')
-            alarm_value: Il valore dell'allarme ricevuto
-            aggregated_diags: I 'diags' dall'API aggregata
-            
-        Returns:
-            dict con info sulla validazione
-        """
         if egm_alarm_key not in self.alarm_to_flag_mapping:
+            print(f"   ⚠️ Allarme {egm_alarm_key} NON trovato in mapping")
             return {
-                'valid': None,  # Non applicabile
-                'alarm_type': 'fault',
+                'valid': None,
                 'message': f'Allarme {egm_alarm_key} non mappato per validazione'
             }
         
         mapping = self.alarm_to_flag_mapping[egm_alarm_key]
         friendly_name = mapping['friendly']
-        flag_info = mapping['flag']
+        flags_info = mapping['flags']
         
-        # Ora abbiamo solo un flag "Fault" (non più min/max)
-        metric_type = flag_info['metricType']
-        vendor_name = flag_info['vendorName']
+        print(f"   ✓ Mapping trovato per: {friendly_name}")
+        print(f"   Flag da cercare: {[f['vendorName'] for f in flags_info]}")
         
-        # Cerca il flag nell'API aggregata usando il vendorName nei diags
-        if vendor_name in aggregated_diags:
-            flag_data = aggregated_diags[vendor_name]
-            flag_value = flag_data.get('value', False)
-            flag_timestamp = flag_data.get('timestamp', None)
+        # Cerca tutti i flag (Fault, Min, Max)
+        found_flags = {}
+        active_flags = []
+        
+        for flag_info in flags_info:
+            vendor_name = flag_info['vendorName']
+            flag_type = flag_info['type']
             
-            # Converti timestamp se necessario
-            if flag_timestamp:
-                from datetime import datetime
-                if flag_timestamp > 10000000000:  # Millisecondi
-                    flag_timestamp = flag_timestamp / 1000
-                flag_time_str = datetime.fromtimestamp(flag_timestamp).strftime('%d/%m/%y - %H:%M:%S')
+            if vendor_name in thing_alarms:
+                flag_data = thing_alarms[vendor_name]
+                flag_value = flag_data.get('value', False)
+                flag_timestamp = flag_data.get('timestamp')
+                
+                print(f"   ✓ Flag trovato: {vendor_name} = {flag_value}")
+                
+                found_flags[flag_type] = {
+                    'value': flag_value,
+                    'timestamp': flag_timestamp,
+                    'vendor_name': vendor_name
+                }
+                
+                if flag_value == True:
+                    active_flags.append(flag_type)
             else:
-                flag_time_str = 'N/A'
-            
-            return {
-                'valid': flag_value == True,
-                'alarm_type': 'fault',
-                'metric_type': metric_type,
-                'vendor_name': vendor_name,
-                'flag_value': flag_value,
-                'flag_timestamp': flag_time_str,
-                'friendly_name': friendly_name,
-                'message': f"Flag FAULT: {vendor_name} = {flag_value}"
-            }
+                print(f"   ✗ Flag NON trovato: {vendor_name}")
+        
+        # Determina se l'allarme è valido (almeno un flag a true)
+        is_valid = len(active_flags) > 0
+        
+        print(f"   Risultato: valid={is_valid}, active_flags={active_flags}")
+        
+        # Formatta timestamp del primo flag trovato
+        if found_flags:
+            first_flag = list(found_flags.values())[0]
+            ts = first_flag['timestamp']
+            if ts and ts > 10000000000:
+                ts = ts / 1000
+            time_str = datetime.fromtimestamp(ts).strftime('%d/%m/%y - %H:%M:%S') if ts else 'N/A'
         else:
-            return {
-                'valid': False,
-                'alarm_type': 'fault',
-                'metric_type': metric_type,
-                'vendor_name': vendor_name,
-                'flag_value': None,
-                'flag_timestamp': None,
-                'friendly_name': friendly_name,
-                'message': f"⚠️ Flag {vendor_name} non trovato nell'API aggregata"
-            }
+            time_str = 'N/A'
+        
+        # Costruisci messaggio dettagliato
+        if is_valid:
+            flags_text = ', '.join([f.upper() for f in active_flags])
+            message = f"Flag attivi: {flags_text}"
+        elif found_flags:
+            flags_text = ', '.join([f"{k.upper()}=false" for k in found_flags.keys()])
+            message = f"Flag trovati ma inattivi: {flags_text}"
+        else:
+            expected_flags = ', '.join([f['vendorName'] for f in flags_info])
+            message = f"Nessun flag trovato. Attesi: {expected_flags}"
+        
+        result = {
+            'valid': is_valid,
+            'friendly_name': friendly_name,
+            'active_flags': active_flags,
+            'all_flags': found_flags,
+            'flag_timestamp': time_str,
+            'message': message
+        }
+        
+        print(f"   📤 Ritorno: {result}")
+        
+        return result
     
     def start_unified_monitoring(self, sid, device_id, num_sensors, ui, timeout_minutes=10):
         """Avvia il monitoraggio unificato per metriche e allarmi"""
@@ -272,12 +308,11 @@ class AlarmMonitor:
         return diff_minutes > settings['time_window_minutes']
     
     def _unified_monitor_loop(self, sid, device_id, num_sensors, ui, timeout_minutes, stop_event):
-        """Loop principale di monitoraggio unificato con tripla verifica metriche"""
+        """Loop principale di monitoraggio unificato con tripla verifica metriche e validazione allarmi"""
         print(f"🔍 Monitoraggio avviato con sid: {sid}")
         start_time = datetime.now()
         timeout = timedelta(minutes=timeout_minutes)
         check_interval = 5
-        last_aggregated_check = None
         
         # Mappatura allarmi
         alarm_mapping = {
@@ -316,6 +351,10 @@ class AlarmMonitor:
         event_history = []
         all_received_alarms = {}
         
+        # Variabili per gestione cache Twin Manager
+        thing_alarms = {}
+        thing_alarms_last_update = None
+        
         while not stop_event.is_set():
             current_time = datetime.now()
             elapsed = current_time - start_time
@@ -338,23 +377,45 @@ class AlarmMonitor:
                 break
             
             try:
-                # 🔥 CARICA API AGGREGATA ALL'INIZIO per avere sempre i diags disponibili
+                # 🔥 STEP 1: CARICA FLAG ALLARMI DA TWIN MANAGER
+                # Aggiorna i flag allarme ogni 60 secondi o all'inizio
+                should_update_alarms = (
+                    thing_alarms_last_update is None or 
+                    (current_time - thing_alarms_last_update).total_seconds() >= 60
+                )
+                
+                if should_update_alarms:
+                    print(f"🔄 Aggiornamento flag allarmi da Twin Manager (elapsed: {elapsed.total_seconds():.0f}s)")
+                    success_thing, thing_data = digil_test_service.get_thing_metrics(device_id)
+                    
+                    if success_thing:
+                        thing_alarms = thing_data
+                        thing_alarms_last_update = current_time
+                        print(f"   ✅ {len(thing_alarms)} flag allarme caricati")
+                    else:
+                        print(f"   ⚠️ Twin Manager non disponibile: {thing_data}")
+                        # Mantieni cache precedente se disponibile
+                else:
+                    if thing_alarms:
+                        elapsed_cache = (current_time - thing_alarms_last_update).total_seconds()
+                        print(f"   📦 Uso cache flag allarmi ({len(thing_alarms)} flag, età: {elapsed_cache:.0f}s)")
+                
+                # 🔥 STEP 2: CARICA API AGGREGATA per metriche mancanti
                 agg_data = None
                 success_agg, agg_data = digil_test_service.get_device_aggregated_data(device_id)
                 
                 if not success_agg or not agg_data:
                     print(f"⚠️ API aggregata non disponibile (elapsed: {elapsed.total_seconds():.0f}s)")
-                    agg_data = {'diags': {}, 'measures': {}}  # Crea struttura vuota per evitare errori
+                    agg_data = {'measures': {}}  # Crea struttura vuota
                 else:
-                    diags_count = len(agg_data.get('diags', {}))
                     measures_count = len(agg_data.get('measures', {}))
-                    print(f"✅ API aggregata OK: {diags_count} diags, {measures_count} measures")
+                    print(f"✅ API aggregata OK: {measures_count} measures")
                 
                 # Calcola range temporale
                 end_timestamp = int(current_time.timestamp())
                 start_timestamp = end_timestamp - 300  # Ultimi 5 minuti
                 
-                # Check 1: Metriche dalla telemetria
+                # 🔥 STEP 3: CHECK METRICHE DALLA TELEMETRIA
                 success_tm, tm_data = digil_test_service.get_telemetry_data(
                     device_id, ui, start_timestamp, end_timestamp
                 )
@@ -394,7 +455,7 @@ class AlarmMonitor:
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
 
-                # Check 2: Lastval per metriche E allarmi
+                # 🔥 STEP 4: CHECK LASTVAL PER METRICHE E ALLARMI
                 success_lv, lastval_data = digil_test_service.get_lastval_data(device_id, ui)
 
                 if success_lv and 'lastVal' in lastval_data:
@@ -406,7 +467,6 @@ class AlarmMonitor:
                         if self.should_filter_data(sid, packet_timestamp):
                             continue
                         
-                        # CORREZIONE: Definisci packet_datetime QUI, non formatted_timestamp
                         packet_datetime = datetime.fromtimestamp(packet_timestamp)
                         formatted_timestamp = packet_datetime.strftime('%d/%m/%y - %H:%M:%S')
                         
@@ -435,21 +495,19 @@ class AlarmMonitor:
                                     event_history.append(('metric', metric_entry))
                                     self.socketio.emit('metric_found', metric_entry, room=sid)
                                 
-                                # Gestione allarmi - USA formatted_timestamp NON display_time
+                                # 🔥 Gestione allarmi CON VALIDAZIONE
                                 if 'EGM_OUT_SENS' in metric_type and metric_type in alarm_mapping:
                                     current_received_alarms[metric_type] = metric_val
                                     
                                     if metric_type not in all_received_alarms:
                                         all_received_alarms[metric_type] = metric_val
                                     
-                                    # 🔥 VALIDA L'ALLARME con i diags (ora sempre disponibili!)
-                                    validation = None
-                                    if agg_data and 'diags' in agg_data:
-                                        validation = self.check_alarm_validation(
-                                            metric_type, 
-                                            metric_val, 
-                                            agg_data['diags']
-                                        )
+                                    # 🔥 VALIDA L'ALLARME con i flag da Twin Manager
+                                    validation = self.check_alarm_validation(
+                                        metric_type, 
+                                        metric_val, 
+                                        thing_alarms
+                                    )
                                     
                                     if metric_type in expected_alarms:
                                         if metric_type not in found_alarms:
@@ -478,7 +536,7 @@ class AlarmMonitor:
                                             event_history.append(('other_alarm', other_alarm_entry))
                                             self.socketio.emit('other_alarm_found', other_alarm_entry, room=sid)
                     
-                    # Gestione allarmi flessibili
+                    # 🔥 Gestione allarmi flessibili
                     if is_flexible and isinstance(alarm_config, dict):
                         if num_sensors == 3:
                             primary_count = sum(1 for alarm in alarm_config['primary'] if alarm in all_received_alarms)
@@ -502,14 +560,14 @@ class AlarmMonitor:
                                         }, room=sid)
                             expected_alarms = new_expected
 
-                # Check 3: Usa measures dall'API aggregata (già caricata) per metriche/allarmi mancanti
+                # 🔥 STEP 5: FALLBACK API AGGREGATA per metriche/allarmi mancanti
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
 
                 if (missing_metrics or missing_alarms) and agg_data and 'measures' in agg_data:
                     measures = agg_data['measures']
                     
-                    # Processa solo metriche mai ricevute
+                    # Processa metriche mancanti
                     for measure_key, measure_data in measures.items():
                         if measure_key in digil_test_service.reverse_metrics_mapping:
                             eit_metric = digil_test_service.reverse_metrics_mapping[measure_key]
@@ -577,13 +635,11 @@ class AlarmMonitor:
                                 found_alarms[alarm_key] = measure_data['value']
                                 
                                 # 🔥 VALIDA anche gli allarmi dall'API aggregata
-                                validation = None
-                                if 'diags' in agg_data:
-                                    validation = self.check_alarm_validation(
-                                        alarm_key,
-                                        measure_data['value'],
-                                        agg_data['diags']
-                                    )
+                                validation = self.check_alarm_validation(
+                                    alarm_key,
+                                    measure_data['value'],
+                                    thing_alarms
+                                )
                                 
                                 alarm_entry = {
                                     'alarm_type': alarm_key,
@@ -592,12 +648,12 @@ class AlarmMonitor:
                                     'elapsed': str(elapsed).split('.')[0],
                                     'is_expected': True,
                                     'source': 'aggregated',
-                                    'validation': validation  # 🔥 CAMPO VALIDAZIONE
+                                    'validation': validation
                                 }
                                 event_history.append(('alarm', alarm_entry))
                                 self.socketio.emit('alarm_found', alarm_entry, room=sid)
                 
-                # Aggiornamenti di stato
+                # 🔥 STEP 6: AGGIORNAMENTI DI STATO
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
                 
@@ -616,7 +672,7 @@ class AlarmMonitor:
                     'last_check': datetime.now().strftime('%H:%M:%S')
                 }, room=sid)
                 
-                # Completamento se tutto ricevuto
+                # 🔥 STEP 7: COMPLETAMENTO se tutto ricevuto
                 if len(metrics_with_data) == len(expected_metrics) and len(found_alarms) == len(expected_alarms):
                     self.socketio.emit('monitoring_complete', {
                         'success': True,

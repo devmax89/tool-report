@@ -15,6 +15,8 @@ class DigilTestService:
         self.influx_base_url = "apidigil-ese-onesait-ese.apps.clusteriot.opencs.servizi.prv"
         self.access_token = None
         self.token_expires_at = None
+        self.onesait_token = None
+        self.onesait_token_expires_at = None
         
         # MAPPATURE COMPLETE DAL DIZIONARIO
         
@@ -1195,6 +1197,206 @@ class DigilTestService:
         results['duration'] = (results['end_time'] - results['start_time']).total_seconds()
 
         return results
+    
+    def get_onesait_token(self):
+        """Ottiene token per chiamate Onesait Engine (diverso dal token DigilV2)"""
+        try:
+            url = "https://rh-sso.apps.clusterzac.opencs.servizi.prv/auth/realms/Onesait-terna/protocol/openid-connect/token"
+            
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            
+            data = {
+                'grant_type': 'client_credentials',
+                'client_id': 'application',
+                'client_secret': 'LW1Rz1K4YWWgShW0vslArw8To4pTQeje'
+            }
+            
+            response = requests.post(url, headers=headers, data=data, verify=False)
+            response.raise_for_status()
+            
+            token_data = response.json()
+            return True, token_data['access_token']
+            
+        except Exception as e:
+            return False, f"Errore token Onesait: {str(e)}"
+        
+    def get_onesait_token(self):
+        """Ottiene token per chiamate Onesait Engine (diverso dal token DigilV2)"""
+        try:
+            # Controlla se il token è ancora valido
+            if self.onesait_token and self.onesait_token_expires_at:
+                if datetime.now() < (self.onesait_token_expires_at - timedelta(seconds=10)):
+                    return True, self.onesait_token
+            
+            url = "https://rh-sso.apps.clusterzac.opencs.servizi.prv/auth/realms/Onesait-terna/protocol/openid-connect/token"
+            
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            
+            data = {
+                'grant_type': 'client_credentials',
+                'client_id': 'application',
+                'client_secret': 'LW1Rz1K4YWWgShW0vslArw8To4pTQeje'
+            }
+            
+            print("🔑 Richiesta token Onesait...")
+            response = requests.post(url, headers=headers, data=data, verify=False, timeout=10)
+            response.raise_for_status()
+            
+            token_data = response.json()
+            self.onesait_token = token_data['access_token']
+            # Token scade dopo 300 secondi
+            self.onesait_token_expires_at = datetime.now() + timedelta(seconds=290)
+            
+            print(f"✅ Token Onesait ottenuto, scade alle: {self.onesait_token_expires_at.strftime('%H:%M:%S')}")
+            return True, self.onesait_token
+            
+        except Exception as e:
+            print(f"❌ Errore token Onesait: {e}")
+            return False, f"Errore token Onesait: {str(e)}"
+        
+    def get_thing_metrics(self, device_name):
+        """
+        Recupera tutte le metriche del device da Onesait Twin Manager
+        Include gli allarmi con i loro valori true/false
+        """
+        try:
+            print(f"📊 Recupero metriche Twin Manager per: {device_name}")
+            
+            # Step 1: Ottieni tenantId dalla chiamata al backend DigilV2
+            success, backend_response = self._get_device_info_from_backend(device_name)
+            if not success:
+                return False, "Impossibile recuperare tenant ID dal backend"
+            
+            content = backend_response.get('content', [])
+            if not content or len(content) == 0:
+                return False, f"Device {device_name} non trovato nel backend"
+            
+            tenant_id = content[0].get('tenantId')
+            if not tenant_id:
+                return False, "Tenant ID non presente nella response"
+            
+            print(f"   ✓ Tenant ID: {tenant_id}")
+            
+            # Step 2: Ottieni token Onesait
+            success, onesait_token = self.get_onesait_token()
+            if not success:
+                return False, onesait_token
+            
+            # Step 3: Chiama Twin Manager
+            url = f"https://onesait-engine-ese.apps.clusteriot.opencs.servizi.prv/twin-manager/v1/tenants/{tenant_id}/things?searchText="
+            
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {onesait_token}'
+            }
+            
+            print(f"   📡 Chiamata Twin Manager...")
+            response = requests.get(url, headers=headers, verify=False, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                # Estrai le metriche dal primo thing
+                if 'things' in data and len(data['things']) > 0:
+                    metrics = data['things'][0].get('metrics', [])
+                    print(f"   ✓ Trovate {len(metrics)} metriche totali")
+                    
+                    # 🔍 DEBUG: Mostra TUTTE le info di un flag per capire la struttura
+                    print(f"\n🔍 DEBUG: Struttura completa delle prime 3 metriche con ALG_:")
+                    for metric in metrics[:50]:  # Mostra le prime 50
+                        metric_name = metric.get('metric', '')
+                        if 'ALG_Digil2_Alm_' in metric_name:
+                            print(f"\n   📋 Metrica completa:")
+                            print(f"      {metric}")
+                            break  # Mostra solo il primo per non intasare i log
+                    
+                    # Filtra solo gli allarmi (ALG_Digil2_Alm_*)
+                    alarms = {}
+                    alarm_count = 0
+                    for metric in metrics:
+                        metric_name = metric.get('metric', '')
+                        
+                        # Cerca pattern ALG_Digil2_Alm_*
+                        if 'ALG_Digil2_Alm_' in metric_name and '.calc' in metric_name:
+                            # Rimuovi .calc dal nome
+                            clean_name = metric_name.replace('.calc', '')
+                            
+                            # 🔍 DEBUG: Mostra i primi 3 allarmi trovati
+                            if alarm_count < 3:
+                                print(f"\n   🔍 Allarme #{alarm_count + 1}:")
+                                print(f"      Nome: {clean_name}")
+                                print(f"      Value: {metric.get('value')} (type: {type(metric.get('value'))})")
+                                print(f"      Timestamp: {metric.get('timestamp')}")
+                                print(f"      Metrica completa: {metric}")
+                                alarm_count += 1
+                            
+                            alarms[clean_name] = {
+                                'value': metric.get('value'),
+                                'timestamp': metric.get('timestamp'),
+                                'type': self._parse_alarm_type(clean_name)
+                            }
+                    
+                    print(f"   ✓ Trovati {len(alarms)} flag allarme")
+                    
+                    # Debug: mostra alcuni esempi
+                    if alarms:
+                        sample_alarms = list(alarms.keys())[:3]
+                        print(f"   Esempi: {sample_alarms}")
+                    
+                    return True, alarms
+                else:
+                    return False, "Nessun thing trovato nella response"
+            else:
+                error_msg = f"HTTP {response.status_code}"
+                if response.text:
+                    error_msg += f" - {response.text[:200]}"
+                return False, error_msg
+                
+        except Exception as e:
+            print(f"❌ Errore recupero Twin Manager: {e}")
+            import traceback
+            print(traceback.format_exc())
+            return False, f"Errore recupero metriche: {str(e)}"
+
+    def _parse_alarm_type(self, alarm_name):
+        """Estrae il tipo di allarme dal nome"""
+        if 'Fault' in alarm_name:
+            return 'fault'
+        elif 'Min' in alarm_name:
+            return 'min'
+        elif 'Max' in alarm_name:
+            return 'max'
+        return 'unknown'
+
+    def _get_device_info_from_backend(self, device_name):
+        """Recupera info device dal backend DigilV2 (metodo helper)"""
+        try:
+            # Assicurati di avere un token valido per il backend DigilV2
+            if not self.access_token:
+                success, msg = self.get_auth_token()
+                if not success:
+                    return False, msg
+            
+            import urllib.parse
+            encoded_name = urllib.parse.quote(device_name)
+            url = f"https://digil-back-end-onesait.servizi.prv/api/v1/digils?name={encoded_name}"
+            
+            headers = {
+                'Accept': 'application/json',
+                'Authorization': f'Bearer {self.access_token}'
+            }
+            
+            response = requests.get(url, headers=headers, verify=False, timeout=10)
+            response.raise_for_status()
+            
+            return True, response.json()
+            
+        except Exception as e:
+            return False, str(e)
 
 # Istanza singleton
 digil_test_service = DigilTestService()
