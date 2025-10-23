@@ -440,147 +440,23 @@ function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
     
-    // Estrai info validazione
-    const validation = data.validation || {};
-    const isValid = validation.valid;
-    const activeFlags = validation.active_flags || [];
-    const allFlags = validation.all_flags || {};
-    
-    // Determina icona e stile in base alla validazione
-    let validationIcon = '🚨';
-    let validationStyle = '';
-    let validationInfo = '';
-    
-    // 🔍 Conta quanti flag sono stati effettivamente trovati (non None)
-    const foundFlagsCount = Object.values(allFlags).filter(f => f.value !== null && f.value !== undefined).length;
-    const totalFlagsExpected = Object.keys(allFlags).length;
-    
-    if (validation && foundFlagsCount > 0) {
-        if (isValid === true) {
-            // ✅ Allarme VALIDO - almeno un flag è true
-            validationIcon = '✅ 🚨';
-            validationStyle = 'background: #d4edda; border-left: 4px solid #28a745;';
-            
-            const flagsText = activeFlags.map(f => f.toUpperCase()).join(', ');
-            
-            // Mostra dettagli di tutti i flag
-            let flagDetails = '<div style="margin-top: 8px; font-size: 0.85em;">';
-            for (const [flagType, flagData] of Object.entries(allFlags)) {
-                const value = flagData.value;
-                const icon = value === true ? '✓' : value === false ? '✗' : '?';
-                const color = value === true ? '#28a745' : value === false ? '#6c757d' : '#ffc107';
-                const displayValue = value === null || value === undefined ? 'NULL' : value.toString();
-                flagDetails += `<div style="color: ${color};">
-                    ${icon} ${flagType.toUpperCase()}: ${displayValue}
-                </div>`;
-            }
-            flagDetails += '</div>';
-            
-            validationInfo = `<br><small style="color: #155724;">
-                <strong>✓ Validato:</strong> Flag attivi: ${flagsText}<br>
-                <strong>Timestamp:</strong> ${validation.flag_timestamp}
-                ${flagDetails}
-            </small>`;
-            
-        } else if (isValid === false && foundFlagsCount === totalFlagsExpected) {
-            // ⚠️ Allarme NON VALIDO - flag trovati ma tutti a false
-            validationIcon = '⚠️ 🚨';
-            validationStyle = 'background: #fff3cd; border-left: 4px solid #ffc107;';
-            
-            // Mostra quali flag sono stati trovati
-            let flagDetails = '<div style="margin-top: 8px; font-size: 0.85em;">';
-            for (const [flagType, flagData] of Object.entries(allFlags)) {
-                const value = flagData.value;
-                const icon = value === true ? '✓' : value === false ? '✗' : '?';
-                const color = value === true ? '#28a745' : value === false ? '#856404' : '#ffc107';
-                const displayValue = value === null || value === undefined ? 'NULL' : value.toString();
-                flagDetails += `<div style="color: ${color};">
-                    ${icon} ${flagType.toUpperCase()}: ${displayValue}
-                </div>`;
-            }
-            flagDetails += '</div>';
-            
-            validationInfo = `<br><small style="color: #856404;">
-                <strong>⚠ Non validato:</strong> ${validation.message}
-                ${flagDetails}
-            </small>`;
-            
-        } else {
-            // ⚠️ Flag parzialmente trovati (alcuni None)
-            validationIcon = '⚠️ 🚨';
-            validationStyle = 'background: #fff3cd; border-left: 4px solid #ffc107;';
-            
-            let flagDetails = '<div style="margin-top: 8px; font-size: 0.85em;">';
-            for (const [flagType, flagData] of Object.entries(allFlags)) {
-                const value = flagData.value;
-                const icon = value === true ? '✓' : value === false ? '✗' : '?';
-                const color = value === true ? '#28a745' : value === false ? '#6c757d' : '#ffc107';
-                const displayValue = value === null || value === undefined ? 'NULL' : value.toString();
-                flagDetails += `<div style="color: ${color};">
-                    ${icon} ${flagType.toUpperCase()}: ${displayValue}
-                </div>`;
-            }
-            flagDetails += '</div>';
-            
-            validationInfo = `<br><small style="color: #856404;">
-                <strong>⚠ Parziale:</strong> ${foundFlagsCount}/${totalFlagsExpected} flag con valore valido
-                ${flagDetails}
-            </small>`;
-        }
-    } else {
-        // ❓ Flag non trovati del tutto
-        validationIcon = '❓ 🚨';
-        validationStyle = 'background: #f8d7da; border-left: 4px solid #dc3545;';
-        validationInfo = `<br><small style="color: #721c24;">
-            <strong>✗ Flag mancanti:</strong> ${validation.message || 'Nessun flag trovato'}
-        </small>`;
-    }
-    
-    // Controlla se l'allarme esiste già
     let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
     
     if (existingItem) {
-        // Aggiorna l'elemento esistente
-        existingItem.style = validationStyle;
         existingItem.innerHTML = `
-            <strong>${validationIcon} ${data.alarm_type} - ${friendlyName}</strong><br>
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
             📍 ${data.timestamp} - Valore: ${data.value}
-            ${validationInfo}
         `;
-        
-        // Flash per indicare aggiornamento
-        const originalBg = existingItem.style.backgroundColor;
-        existingItem.style.backgroundColor = '#ffffcc';
-        setTimeout(() => {
-            existingItem.style.backgroundColor = originalBg;
-        }, 500);
     } else {
-        // Crea nuovo elemento
         const itemDiv = document.createElement('div');
         itemDiv.id = `alarm-${data.alarm_type}`;
         itemDiv.className = 'item found';
-        itemDiv.style = validationStyle;
         itemDiv.innerHTML = `
-            <strong>${validationIcon} ${data.alarm_type} - ${friendlyName}</strong><br>
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
             📍 ${data.timestamp} - Valore: ${data.value}
-            ${validationInfo}
         `;
         foundDiv.appendChild(itemDiv);
     }
-    
-    // Salva i dati SEMPRE
-    foundAlarmsData[data.alarm_type] = data;
-    
-    // Controlla se deve essere nascosto visivamente (solo per display locale)
-    if (isDataTooOld(data.timestamp) && !historicalMode) {
-        const element = document.getElementById(`alarm-${data.alarm_type}`);
-        if (element) {
-            element.style.display = 'none';
-        }
-    }
-    
-    // Aggiorna contatori
-    updateFilteredCounts();
 }
 
 function addOtherAlarm(data) {
