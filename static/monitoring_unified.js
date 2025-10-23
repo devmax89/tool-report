@@ -440,20 +440,47 @@ function addFoundAlarm(data) {
     const foundDiv = document.getElementById('foundAlarms');
     const friendlyName = alarmDescriptions[data.alarm_type] || data.alarm_type;
     
+    // 🆕 NUOVO: Determina l'icona e il badge in base alla fonte
+    let sourceBadge = '';
+    let valueDisplay = data.value;
+    let borderColor = '4px solid #28a745'; // Verde di default
+    
+    if (data.source === 'mongodb') {
+        sourceBadge = '<span style="background: #007bff; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.75em; margin-left: 8px;">MongoDB ✓</span>';
+        valueDisplay = `<strong>TRUE</strong>`;
+        borderColor = '4px solid #007bff'; // Blu per MongoDB
+        
+        // Aggiungi info sulla metrica MongoDB se disponibile
+        if (data.mongodb_metric) {
+            valueDisplay += ` <small style="color: #666;">(${data.mongodb_metric})</small>`;
+        }
+    }
+    
     let existingItem = document.getElementById(`alarm-${data.alarm_type}`);
     
     if (existingItem) {
+        // Aggiorna esistente
+        existingItem.style.borderLeft = borderColor;
         existingItem.innerHTML = `
-            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong>${sourceBadge}<br>
+            📍 ${data.timestamp} - Valore: ${valueDisplay}
         `;
+        
+        // Flash per indicare aggiornamento
+        const originalBg = existingItem.style.backgroundColor || '';
+        existingItem.style.backgroundColor = '#ffffcc';
+        setTimeout(() => {
+            existingItem.style.backgroundColor = originalBg;
+        }, 500);
     } else {
+        // Crea nuovo
         const itemDiv = document.createElement('div');
         itemDiv.id = `alarm-${data.alarm_type}`;
         itemDiv.className = 'item found';
+        itemDiv.style.borderLeft = borderColor;
         itemDiv.innerHTML = `
-            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong><br>
-            📍 ${data.timestamp} - Valore: ${data.value}
+            <strong>🚨 ${data.alarm_type} - ${friendlyName}</strong>${sourceBadge}<br>
+            📍 ${data.timestamp} - Valore: ${valueDisplay}
         `;
         foundDiv.appendChild(itemDiv);
     }

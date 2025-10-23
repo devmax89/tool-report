@@ -4,12 +4,26 @@ from threading import Thread, Event
 import time
 from datetime import datetime, timedelta
 from digil_test_service import digil_test_service
+from mongodb_checker import MongoDBAlarmChecker, get_alarm_metrics_for_sensor
 
 class AlarmMonitor:
     def __init__(self, socketio):
         self.socketio = socketio
         self.monitoring_threads = {}
         self.stop_events = {}
+        
+        # 🆕 NUOVO: Inizializza MongoDB checker
+        self.mongo_checker = None
+        try:
+            self.mongo_checker = MongoDBAlarmChecker()
+            if self.mongo_checker.connect():
+                print("✅ MongoDB checker inizializzato e connesso")
+            else:
+                print("⚠️  MongoDB checker non disponibile - fallback su solo valori EGM")
+                self.mongo_checker = None
+        except Exception as e:
+            print(f"⚠️  MongoDB checker init failed: {e} - fallback su solo valori EGM")
+            self.mongo_checker = None
     
     def start_unified_monitoring(self, sid, device_id, num_sensors, ui, timeout_minutes=10):
         """Avvia il monitoraggio unificato per metriche e allarmi"""
@@ -62,6 +76,10 @@ class AlarmMonitor:
             del self.stop_events[sid]
         if sid in self.monitoring_threads:
             del self.monitoring_threads[sid]
+        
+        # MongoDB rimane connesso per tutto il lifetime dell'applicazione
+        # Si disconnetterà automaticamente alla chiusura dell'app
+        print(f"✅ Monitoraggio fermato per {sid} - Thread attivi: {len(self.monitoring_threads)}")            
 
     def update_time_filter(self, sid, historical_mode, time_window_minutes):
         """Aggiorna le impostazioni del filtro temporale per una sessione"""
@@ -106,6 +124,59 @@ class AlarmMonitor:
         
         # Filtra se il dato è più vecchio della finestra temporale
         return diff_minutes > settings['time_window_minutes']
+    
+    def check_mongodb_alarm(self, device_id, egm_sensor_metric):
+        """
+        Verifica il booleano MongoDB per un sensore specifico.
+        🆕 MODIFICA: Cerca SOLO il Max alarm per sensori di tiro (Min è inaffidabile)
+        """
+        result = {
+            'found': False,
+            'active': False,
+            'timestamp': None,
+            'timestamp_unix': None,  # Assicurati che ci sia questo campo!
+            'metric_found': None
+        }
+        
+        if self.mongo_checker is None:
+            return result
+        
+        # Ottieni le metriche EAM corrispondenti (Min e Max)
+        eam_metrics = get_alarm_metrics_for_sensor(egm_sensor_metric)
+        
+        if not eam_metrics:
+            return result
+        
+        # 🆕 NUOVO: Per sensori di tiro, cerca SOLO il Max alarm (più affidabile)
+        if len(eam_metrics) == 2:
+            # Ha sia Min che Max → prendi solo Max (indice 1)
+            eam_metrics = [eam_metrics[1]]
+            print(f"   🎯 Sensore tiro: cerco solo Max alarm {eam_metrics[0]}")
+        
+        # Controlla le metriche (ora solo Max per sensori tiro)
+        for eam_metric in eam_metrics:
+            try:
+                mongo_result = self.mongo_checker.check_alarm_boolean(
+                    device_id, 
+                    eam_metric,
+                    timeout=5
+                )
+                
+                if mongo_result['active']:
+                    # Trovato un true!
+                    result['found'] = True
+                    result['active'] = True
+                    result['timestamp'] = mongo_result['timestamp']
+                    result['timestamp_unix'] = mongo_result.get('timestamp_unix')  # ← usa .get()
+                    result['metric_found'] = mongo_result['metric_checked']
+                    print(f"   ✅ MongoDB TRUE found: {eam_metric}_calc")
+                    return result  # Ritorna subito
+                    
+            except Exception as e:
+                print(f"   ⚠️  MongoDB query error for {eam_metric}: {e}")
+                continue
+        
+        return result
     
     def _unified_monitor_loop(self, sid, device_id, num_sensors, ui, timeout_minutes, stop_event):
         """Loop principale di monitoraggio unificato con tripla verifica metriche e validazione allarmi"""
@@ -409,7 +480,44 @@ class AlarmMonitor:
                                 }
                                 event_history.append(('alarm', alarm_entry))
                                 self.socketio.emit('alarm_found', alarm_entry, room=sid)
-                
+
+                # 🆕 STEP 5.5: VERIFICA MONGODB per allarmi ancora mancanti
+                missing_alarms = [a for a in expected_alarms if a not in found_alarms]
+
+                if missing_alarms and self.mongo_checker is not None:
+                    print(f"🔍 Checking MongoDB for {len(missing_alarms)} missing alarms...")
+                    
+                    for alarm_key in missing_alarms:
+                        # Verifica MongoDB per questo allarme
+                        mongo_result = self.check_mongodb_alarm(device_id, alarm_key)
+                        
+                        if mongo_result['active']:
+                            # 🆕 NUOVO: Controlla se il timestamp MongoDB rispetta il filtro temporale
+                            should_skip = False
+                            if mongo_result.get('timestamp_unix'):
+                                if self.should_filter_data(sid, mongo_result['timestamp_unix']):
+                                    print(f"   ⏩ MongoDB TRUE per {alarm_key} troppo vecchio ({mongo_result['timestamp']}), scartato")
+                                    should_skip = True
+                            
+                            if not should_skip:
+                                # OK, timestamp valido o non disponibile - accetta l'allarme
+                                found_alarms[alarm_key] = "VALIDATED_VIA_MONGODB"
+                                
+                                # Formatta per visualizzazione
+                                alarm_entry = {
+                                    'alarm_type': alarm_key,
+                                    'value': 'TRUE (MongoDB)',
+                                    'timestamp': mongo_result['timestamp'] or 'N/A',
+                                    'elapsed': str(elapsed).split('.')[0],
+                                    'is_expected': True,
+                                    'source': 'mongodb',
+                                    'mongodb_metric': mongo_result['metric_found']
+                                }
+                                event_history.append(('alarm', alarm_entry))
+                                self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                
+                                print(f"✅ Alarm validated via MongoDB: {alarm_key}")
+
                 # 🔥 STEP 6: AGGIORNAMENTI DI STATO
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]

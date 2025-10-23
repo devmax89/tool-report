@@ -12,7 +12,22 @@ hiddenimports += collect_submodules('pandas')
 hiddenimports += collect_submodules('flask_socketio')
 hiddenimports += collect_submodules('socketio')
 hiddenimports += collect_submodules('engineio')
-hiddenimports += ['email_service', 'monitoring_service', 'digil_test_service', 'dotenv', 'jinja2']
+
+# MongoDB e SSH dependencies
+hiddenimports += collect_submodules('pymongo')
+hiddenimports += collect_submodules('sshtunnel')
+hiddenimports += collect_submodules('paramiko')
+hiddenimports += collect_submodules('cryptography')
+
+# Moduli custom
+hiddenimports += [
+    'email_service', 
+    'monitoring_service', 
+    'digil_test_service',
+    'mongodb_checker',
+    'dotenv', 
+    'jinja2'
+]
 
 # Raccogli i data files
 datas = []
@@ -21,6 +36,12 @@ datas += collect_data_files('pandas')
 datas += collect_data_files('flask_socketio')
 datas += collect_data_files('socketio')
 datas += collect_data_files('engineio')
+
+# Data files per MongoDB
+datas += collect_data_files('pymongo')
+datas += collect_data_files('cryptography')
+
+# Files del progetto
 datas += [
     ('templates', 'templates'),
     ('templates_excel', 'templates_excel'),
@@ -28,6 +49,7 @@ datas += [
     ('email_service.py', '.'),
     ('monitoring_service.py', '.'),
     ('digil_test_service.py', '.'),
+    ('mongodb_checker.py', '.'),  # 🆕 NUOVO
     ('config', 'config'),
 ]
 
