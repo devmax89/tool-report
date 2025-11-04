@@ -45,7 +45,8 @@ class AlarmMonitor:
         
         self.session_filters[sid] = {
             'historical_mode': historical_mode,
-            'time_window_minutes': time_window
+            'time_window_minutes': time_window,
+            'start_time': datetime.now()
         }
         
         print(f"📝 Filtro inizializzato per sid {sid}:")
@@ -181,7 +182,7 @@ class AlarmMonitor:
     def _unified_monitor_loop(self, sid, device_id, num_sensors, ui, timeout_minutes, stop_event):
         """Loop principale di monitoraggio unificato con tripla verifica metriche e validazione allarmi"""
         print(f"🔍 Monitoraggio avviato con sid: {sid}")
-        start_time = datetime.now()
+        monitoring_start_time = datetime.now()
         timeout = timedelta(minutes=timeout_minutes)
         check_interval = 5
         
@@ -224,7 +225,7 @@ class AlarmMonitor:
         
         while not stop_event.is_set():
             current_time = datetime.now()
-            elapsed = current_time - start_time
+            elapsed = current_time - monitoring_start_time
             
             # Controlla timeout
             if elapsed > timeout:
@@ -307,7 +308,19 @@ class AlarmMonitor:
                     current_received_alarms = {}
                     
                     for entry in lastval_data.get('lastVal', []):
-                        packet_timestamp = entry.get('timestamp', 0) / 1000
+                        # 🆕 SMART: Rileva formato timestamp automaticamente
+                        raw_timestamp = entry.get('timestamp', 0)
+                        relative_timestamp = raw_timestamp / 1000  # Converti millisecondi a secondi
+                        
+                        # Distingui tra timestamp assoluto (Unix epoch) e relativo (dall'inizio test)
+                        # Threshold: 1000000000 secondi = 9 settembre 2001
+                        if relative_timestamp > 1000000000:
+                            # Timestamp assoluto Unix (es: 1761638447.598)
+                            packet_timestamp = relative_timestamp
+                        else:
+                            # Timestamp relativo (es: 220.933)
+                            start_time = self.session_filters[sid]['start_time']
+                            packet_timestamp = start_time.timestamp() + relative_timestamp
                         
                         if self.should_filter_data(sid, packet_timestamp):
                             continue
@@ -349,7 +362,7 @@ class AlarmMonitor:
                                     
                                     if metric_type in expected_alarms:
                                         if metric_type not in found_alarms:
-                                            found_alarms[metric_type] = metric_val
+                                            found_alarms[metric_type] = packet_timestamp
                                             alarm_entry = {
                                                 'alarm_type': metric_type,
                                                 'value': metric_val,
@@ -468,7 +481,9 @@ class AlarmMonitor:
                                 measure_datetime = datetime.fromtimestamp(measure_timestamp)
                                 display_time = measure_datetime.strftime('%d/%m/%y - %H:%M:%S')
                                 
-                                found_alarms[alarm_key] = measure_data['value']
+                                found_alarms[alarm_key] = measure_timestamp
+
+                                print(f"💾 ALARM FROM AGGREGATED API: {alarm_key} @ {measure_timestamp}")
                                 
                                 alarm_entry = {
                                     'alarm_type': alarm_key,
@@ -481,42 +496,94 @@ class AlarmMonitor:
                                 event_history.append(('alarm', alarm_entry))
                                 self.socketio.emit('alarm_found', alarm_entry, room=sid)
 
-                # 🆕 STEP 5.5: VERIFICA MONGODB per allarmi ancora mancanti
+                # 🆕 STEP 5.5: VERIFICA MONGODB per allarmi mancanti O CON TIMESTAMP VECCHIO
                 missing_alarms = [a for a in expected_alarms if a not in found_alarms]
 
-                if missing_alarms and self.mongo_checker is not None:
-                    print(f"🔍 Checking MongoDB for {len(missing_alarms)} missing alarms...")
+                # 🆕 NUOVO: Anche allarmi già trovati potrebbero avere timestamp vecchi
+                potentially_stale_alarms = list(found_alarms.keys())
+
+                if (missing_alarms or potentially_stale_alarms) and self.mongo_checker is not None:
+                    alarms_to_check = list(set(missing_alarms + potentially_stale_alarms))
+                    print(f"🔍 Checking MongoDB for {len(alarms_to_check)} alarms (missing or potentially stale)...")
                     
-                    for alarm_key in missing_alarms:
+                    for alarm_key in alarms_to_check:
                         # Verifica MongoDB per questo allarme
                         mongo_result = self.check_mongodb_alarm(device_id, alarm_key)
                         
-                        if mongo_result['active']:
-                            # 🆕 NUOVO: Controlla se il timestamp MongoDB rispetta il filtro temporale
-                            should_skip = False
-                            if mongo_result.get('timestamp_unix'):
-                                if self.should_filter_data(sid, mongo_result['timestamp_unix']):
-                                    print(f"   ⏩ MongoDB TRUE per {alarm_key} troppo vecchio ({mongo_result['timestamp']}), scartato")
-                                    should_skip = True
+                        if mongo_result['active'] and mongo_result.get('timestamp_unix'):
+                            # MongoDB ha un TRUE con timestamp
                             
-                            if not should_skip:
-                                # OK, timestamp valido o non disponibile - accetta l'allarme
-                                found_alarms[alarm_key] = "VALIDATED_VIA_MONGODB"
+                            # 🆕 Applica filtro temporale se attivo
+                            should_skip_due_to_filter = False
+                            if self.should_filter_data(sid, mongo_result['timestamp_unix']):
+                                print(f"   ⏩ MongoDB TRUE per {alarm_key} fuori dal range temporale ({mongo_result['timestamp']}), scartato")
+                                should_skip_due_to_filter = True
+                            
+                            if not should_skip_due_to_filter:
+                                # MongoDB timestamp è valido
                                 
-                                # Formatta per visualizzazione
-                                alarm_entry = {
-                                    'alarm_type': alarm_key,
-                                    'value': 'TRUE (MongoDB)',
-                                    'timestamp': mongo_result['timestamp'] or 'N/A',
-                                    'elapsed': str(elapsed).split('.')[0],
-                                    'is_expected': True,
-                                    'source': 'mongodb',
-                                    'mongodb_metric': mongo_result['metric_found']
-                                }
-                                event_history.append(('alarm', alarm_entry))
-                                self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                # 🆕 CONFRONTA con timestamp EGM se già trovato
+                                should_use_mongodb = False
                                 
-                                print(f"✅ Alarm validated via MongoDB: {alarm_key}")
+                                if alarm_key in found_alarms:
+                                    # Allarme già trovato via EGM - confronta timestamp
+                                    egm_data = found_alarms[alarm_key]
+                                    egm_timestamp = egm_data if isinstance(egm_data, (int, float)) else None
+                                    mongo_timestamp = mongo_result['timestamp_unix']
+                                    
+                                    if egm_timestamp and mongo_timestamp:
+                                        # 🆕 VERIFICA: Entrambi devono essere in secondi!
+                                        # Se uno è > 10 miliardi, è in millisecondi
+                                        if egm_timestamp > 10000000000:
+                                            egm_timestamp = egm_timestamp / 1000
+                                        
+                                        if mongo_timestamp > 10000000000:
+                                            mongo_timestamp = mongo_timestamp / 1000
+                                        
+                                        time_diff = mongo_timestamp - egm_timestamp
+                                        print(f"      Differenza: {time_diff} secondi ({int(time_diff/60)} minuti)")
+                                        
+                                        # 🆕 NUOVO: Tolleranza 5 minuti (300 secondi)
+                                        TOLERANCE_SECONDS = 300
+                                        
+                                        if time_diff > TOLERANCE_SECONDS:
+                                            # MongoDB SIGNIFICATIVAMENTE più recente (>5 min)
+                                            print(f"   🔄 MongoDB molto più recente di EGM per {alarm_key} (+{int(time_diff)}s > {TOLERANCE_SECONDS}s), sostituisco!")
+                                            should_use_mongodb = True
+                                        elif time_diff > 0:
+                                            # MongoDB più recente MA dentro tolleranza (0-5 min)
+                                            print(f"   ⏸️ MongoDB più recente di EGM per {alarm_key} (+{int(time_diff)}s), ma dentro tolleranza ({TOLERANCE_SECONDS}s), mantengo EGM (più affidabile)")
+                                            should_use_mongodb = False
+                                        else:
+                                            # EGM più recente o uguale
+                                            print(f"   ✓ EGM più recente di MongoDB per {alarm_key} ({int(abs(time_diff))}s), mantengo EGM")
+                                            should_use_mongodb = False
+                                    else:
+                                        # Se non abbiamo timestamp EGM confrontabile, usiamo comunque EGM (priorità)
+                                        print(f"   ⚠️ Timestamp EGM non confrontabile per {alarm_key}, mantengo EGM")
+                                else:
+                                    # Allarme NON trovato via EGM - usa MongoDB
+                                    should_use_mongodb = True
+                                    print(f"   ✓ Allarme {alarm_key} non trovato via EGM, uso MongoDB")
+                                
+                                if should_use_mongodb:
+                                    # Aggiorna/sostituisci con dato MongoDB (salva timestamp per confronti futuri)
+                                    found_alarms[alarm_key] = mongo_result['timestamp_unix']
+                                    
+                                    # Emetti evento
+                                    alarm_entry = {
+                                        'alarm_type': alarm_key,
+                                        'value': 'TRUE (MongoDB)',
+                                        'timestamp': mongo_result['timestamp'] or 'N/A',
+                                        'elapsed': str(elapsed).split('.')[0],
+                                        'is_expected': True,
+                                        'source': 'mongodb',
+                                        'mongodb_metric': mongo_result['metric_found']
+                                    }
+                                    event_history.append(('alarm', alarm_entry))
+                                    self.socketio.emit('alarm_found', alarm_entry, room=sid)
+                                    
+                                    print(f"✅ Alarm {alarm_key} validated via MongoDB (timestamp: {mongo_result['timestamp']})")
 
                 # 🔥 STEP 6: AGGIORNAMENTI DI STATO
                 missing_metrics = [m for m in expected_metrics if m not in metrics_with_data]

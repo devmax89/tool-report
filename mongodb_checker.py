@@ -163,11 +163,18 @@ class MongoDBAlarmChecker:
                 metric_path: {"$eq": True}
             }
             
-            # Execute query with timeout
-            document = self.collection.find_one(
+            # Execute query with timeout - SORT by receivedOn DESC to get most recent
+            cursor = self.collection.find(
                 query,
                 max_time_ms=timeout * 1000
-            )
+            ).sort("receivedOn", -1).limit(1)  # -1 = DESCENDING
+            
+            # Get the first (most recent) document
+            document = None
+            try:
+                document = next(cursor, None)
+            except StopIteration:
+                document = None
             
             if document:
                 result['found'] = True
