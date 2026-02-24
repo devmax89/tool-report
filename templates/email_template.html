@@ -53,11 +53,11 @@
 </head>
 <body>
     <div class="header" style="padding: 30px 20px;">
-        <h2 style="margin: 0;">Report Test DIGIL</h2>
+        <h2 style="margin: 0;">Report {{ scorte_label }}Test DIGIL</h2>
     </div>
     
     <div class="content">
-        <p>In allegato il report del test DIGIL con i seguenti dettagli:</p>
+        <p>In allegato il report del {{ scorte_label.lower() if scorte_label else '' }}test DIGIL con i seguenti dettagli:</p>
         
         <table class="details-table">
             <tr>

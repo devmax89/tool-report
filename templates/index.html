@@ -186,6 +186,19 @@
                                         </label>
                                     </div>
                                 </div>
+                                <div style="display: flex; align-items: center; gap: 15px; padding: 15px; background: #fff3cd; border-radius: 6px; border: 1px solid #ffc107;">
+                                    <label class="switch-label" style="margin: 0; white-space: nowrap; font-weight: 500;">
+                                        Collaudo Scorte:
+                                    </label>
+                                    <div class="form-check form-switch" style="margin: 0;">
+                                        <input class="form-check-input" type="checkbox" id="collaudo_scorte" name="collaudo_scorte" checked 
+                                            style="cursor: pointer; width: 50px; height: 25px; margin: 0;">
+                                        <label class="form-check-label" for="collaudo_scorte" id="scorte_status" 
+                                            style="margin-left: 10px; font-weight: bold; color: #28a745; margin-bottom: 0;">
+                                            Abilitato
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -906,6 +919,22 @@
             } else {
                 statusLabel.textContent = 'Disabilitato';
                 statusLabel.style.color = '#dc3545';
+            }
+        });
+
+        document.getElementById('collaudo_scorte').addEventListener('change', function() {
+            const statusLabel = document.getElementById('scorte_status');
+            const container = this.closest('div[style*="background"]');
+            if (this.checked) {
+                statusLabel.textContent = 'Abilitato';
+                statusLabel.style.color = '#28a745';
+                container.style.background = '#fff3cd';
+                container.style.borderColor = '#ffc107';
+            } else {
+                statusLabel.textContent = 'Disabilitato';
+                statusLabel.style.color = '#dc3545';
+                container.style.background = '#f8f9fa';
+                container.style.borderColor = '#e1e8ed';
             }
         });
         // Funzione per determinare il vendor dal Device ID

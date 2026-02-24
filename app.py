@@ -198,7 +198,8 @@ def update_common_parameters(ws, data):
             date_obj = datetime.strptime(data['start_date'], "%Y-%m-%d")
             formatted_date = date_obj.strftime("%d/%m/%Y")
             old_value = ws['A1'].value
-            ws['A1'].value = f"Test Report - {formatted_date}"
+            scorte_label = "Scorte " if data.get('collaudo_scorte', False) else ""
+            ws['A1'].value = f"Test {scorte_label}Report - {formatted_date}"
             print(f"A1 - Da: '{old_value}' A: '{ws['A1'].value}'")
     except:
         pass
@@ -308,7 +309,8 @@ def create_excel_report(data):
         'start_date': data['start_date'],
         'start_time': data['start_time'],
         'end_date': data['end_date'],
-        'end_time': data['end_time']
+        'end_time': data['end_time'],
+        'collaudo_scorte': data.get('collaudo_scorte', False)
     }
     
     # Gestione scenari
@@ -481,12 +483,14 @@ def generate_report():
             'vendor': request.form['vendor'],
             'device_id': request.form['device_id'],
             'enable_downlink': request.form.get('enable_downlink') == 'on',
-            'enable_allarme': request.form.get('enable_allarme') == 'on'  # NUOVO
+            'enable_allarme': request.form.get('enable_allarme') == 'on',  # NUOVO
+            'collaudo_scorte': request.form.get('collaudo_scorte') == 'on'  # COLLAUDO SCORTE
         }
 
         print(f"📋 Generazione report:")
         print(f"   Scenario Allarme: {'ABILITATO' if data['enable_allarme'] else 'DISABILITATO'}")
         print(f"   Scenario Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
+        print(f"   Collaudo Scorte: {'ABILITATO' if data['collaudo_scorte'] else 'DISABILITATO'}")
 
         # VALIDAZIONE DATA/ORA
         is_valid, error_message = validate_datetime_range(
@@ -516,12 +520,15 @@ def generate_report():
         # Pulisci il vendor name per il filename (rimuovi caratteri speciali)
         vendor_clean = data['vendor'].replace('/', '-').replace('\\', '-')
         
+        # Prefisso Scorte se abilitato
+        scorte_prefix = "Scorte " if data.get('collaudo_scorte', False) else ""
+        
         # Nuovo naming convention per il ZIP
-        zip_filename = f"Report {vendor_clean} - {date_formatted} - {device_short}.zip"
+        zip_filename = f"Report {scorte_prefix}{vendor_clean} - {date_formatted} - {device_short}.zip"
         
         # Nome del file Excel dentro il ZIP
         datetime_start = datetime.strptime(f"{data['start_date']} {data['start_time']}", "%Y-%m-%d %H:%M")
-        excel_filename = f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
+        excel_filename = f"Report_{scorte_prefix.strip()}_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx" if scorte_prefix else f"Report_Device_Fabbrica_generale_{datetime_start.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"
         
         # Crea cartella output se non esiste
         output_dir = Path('output')
@@ -559,11 +566,12 @@ def generate_report():
                 if custom_email:
                     success, message = email_service.send_report_email(
                         zip_path, data['vendor'], data['device_id'], 
-                        date_formatted, custom_email
+                        date_formatted, custom_email, data.get('collaudo_scorte', False)
                     )
                 else:
                     success, message = email_service.send_report_email(
-                        zip_path, data['vendor'], data['device_id'], date_formatted
+                        zip_path, data['vendor'], data['device_id'], date_formatted,
+                        collaudo_scorte=data.get('collaudo_scorte', False)
                     )
                 
                 email_result = {'success': success, 'message': message}

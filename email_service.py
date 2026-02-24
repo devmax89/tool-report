@@ -105,7 +105,7 @@ class EmailService:
         
         return {'to': ['digil.report.info@gmail.com'], 'cc': []}
     
-    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None):
+    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False):
         """Invia email usando Outlook COM API (Windows only)"""
         try:
             import win32com.client
@@ -137,7 +137,8 @@ class EmailService:
                 if recipients.get('cc'):
                     mail.CC = '; '.join(recipients['cc'])
                 
-                mail.Subject = f"Report DIGIL - {vendor} - {date_formatted} - Device {device_id}"
+                scorte_label = "Scorte " if collaudo_scorte else ""
+                mail.Subject = f"Report {scorte_label}DIGIL - {vendor} - {date_formatted} - Device {device_id}"
                 
                 # Carica template HTML
                 if getattr(sys, 'frozen', False):
@@ -157,7 +158,8 @@ class EmailService:
                     device_id=device_id,
                     date_formatted=date_formatted,
                     send_datetime=datetime.now().strftime('%d/%m/%Y %H:%M'),
-                    filename=os.path.basename(zip_path)
+                    filename=os.path.basename(zip_path),
+                    scorte_label="Scorte " if collaudo_scorte else ""
                 )
                 
                 # Imposta il corpo HTML
@@ -195,11 +197,11 @@ class EmailService:
         except Exception as e:
             return False, f"Errore invio tramite Outlook COM: {str(e)}"
     
-    def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None):
+    def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False):
         """Metodo principale che invia SOLO tramite Outlook COM"""
         try:
             if self.active_provider == 'outlook_com':
-                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted, send_to_custom)
+                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted, send_to_custom, collaudo_scorte)
             else:
                 # NESSUN FALLBACK - Restituisce errore se Outlook non disponibile
                 return False, "Invio email disabilitato: Outlook non disponibile."
