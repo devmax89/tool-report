@@ -4,6 +4,7 @@ Connects to MongoDB cluster through SSH bridge to verify alarm states (boolean _
 """
 
 import os
+import json
 from typing import Optional, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -34,6 +35,9 @@ class MongoDBAlarmChecker:
         self.client = None
         self.db = None
         self.collection = None
+        
+        # 🆕 Flag per tracciare stato connessione
+        self.is_connected = False
         
         # Validate configuration
         self._validate_config()
@@ -67,6 +71,8 @@ class MongoDBAlarmChecker:
             mongo_host = primary_host[0]
             mongo_port = int(primary_host[1]) if len(primary_host) > 1 else 27017
             
+            print(f"   📡 Target MongoDB: {mongo_host}:{mongo_port}")
+            
             # Create SSH tunnel
             self.tunnel = SSHTunnelForwarder(
                 (self.ssh_host, self.ssh_port),
@@ -85,11 +91,15 @@ class MongoDBAlarmChecker:
                 f"127.0.0.1:{self.tunnel.local_bind_port}"
             )
             
+            # 🆕 Log URI mascherata (senza password)
+            masked_uri = local_uri.split('@')[0].split(':')[0] + ':****@' + local_uri.split('@')[1] if '@' in local_uri else local_uri
+            print(f"   🔗 Connecting to: {masked_uri[:80]}...")
+            
             self.client = MongoClient(
                 local_uri, 
                 serverSelectionTimeoutMS=10000,
-                connectTimeoutMS=10000,
-                socketTimeoutMS=10000
+                connectTimeoutMS=20000,
+                socketTimeoutMS=20000
             )
             
             # Test connection
@@ -99,10 +109,22 @@ class MongoDBAlarmChecker:
             self.db = self.client[self.mongo_database]
             self.collection = self.db[self.mongo_collection]
             
+            # 🆕 Verifica che la collection esista
+            collections = self.db.list_collection_names()
+            print(f"   📂 Collections disponibili: {collections[:5]}{'...' if len(collections) > 5 else ''}")
+            
+            if self.mongo_collection in collections:
+                print(f"   ✅ Collection '{self.mongo_collection}' trovata")
+            else:
+                print(f"   ⚠️ Collection '{self.mongo_collection}' NON trovata!")
+            
+            self.is_connected = True
             return True
             
         except Exception as e:
-            print(f"❌ Connection error: {e}")
+            print(f"❌ Connection error: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             self.disconnect()
             return False
     
@@ -116,9 +138,31 @@ class MongoDBAlarmChecker:
             if self.tunnel:
                 self.tunnel.stop()
                 print("🔌 SSH tunnel closed")
+            
+            self.is_connected = False
                 
         except Exception as e:
             print(f"⚠️  Error during disconnect: {e}")
+    
+    def check_connection_health(self) -> bool:
+        """
+        🆕 Verifica che la connessione sia ancora attiva.
+        
+        Returns:
+            bool: True se connessione OK, False altrimenti
+        """
+        if not self.is_connected or self.client is None:
+            print("   ⚠️ MongoDB: non connesso (is_connected=False o client=None)")
+            return False
+        
+        try:
+            # Ping per verificare connessione
+            self.client.admin.command('ping')
+            return True
+        except Exception as e:
+            print(f"   ⚠️ MongoDB connection health check failed: {type(e).__name__}: {e}")
+            self.is_connected = False
+            return False
     
     def check_alarm_boolean(
         self, 
@@ -146,13 +190,24 @@ class MongoDBAlarmChecker:
             'found': False,
             'active': False,
             'timestamp': None,
-            'timestamp_unix': None,  # 🆕 NUOVO: timestamp numerico per filtro temporale
+            'timestamp_unix': None,
             'metric_checked': f"{alarm_metric}_calc",
             'error': None
         }
         
+        # 🆕 LOGGING DETTAGLIATO
+        print(f"\n   🔍 MongoDB Query for {alarm_metric}_calc")
+        print(f"      Device ID: {device_id}")
+        
         if self.collection is None:
-            result['error'] = "Not connected to MongoDB"
+            result['error'] = "Not connected to MongoDB (collection is None)"
+            print(f"      ❌ {result['error']}")
+            return result
+        
+        # 🆕 Verifica health della connessione
+        if not self.check_connection_health():
+            result['error'] = "MongoDB connection lost"
+            print(f"      ❌ {result['error']}")
             return result
         
         try:
@@ -163,27 +218,84 @@ class MongoDBAlarmChecker:
                 metric_path: {"$eq": True}
             }
             
+            # 🆕 LOG QUERY
+            print(f"      📝 Query: {json.dumps(query, indent=None)}")
+            print(f"      📂 Database: {self.mongo_database}")
+            print(f"      📂 Collection: {self.mongo_collection}")
+            
             # Execute query with timeout - SORT by receivedOn DESC to get most recent
             cursor = self.collection.find(
                 query,
                 max_time_ms=timeout * 1000
             ).sort("receivedOn", -1).limit(1)  # -1 = DESCENDING
             
+            # 🆕 Conta documenti (per debug)
+            # NOTA: count() è deprecato, usiamo una lista
+            documents = list(cursor)
+            doc_count = len(documents)
+            
+            print(f"      📊 Documenti trovati: {doc_count}")
+            
+            if doc_count == 0:
+                # 🆕 Query di debug: cerca QUALSIASI documento per questo device
+                debug_query = {"clientId": device_id}
+                debug_count = self.collection.count_documents(debug_query, limit=10)
+                print(f"      🔎 Debug: documenti totali per device '{device_id}': {debug_count}")
+                
+                if debug_count == 0:
+                    print(f"      ⚠️ Nessun documento per questo device! Verifica clientId format.")
+                    # 🆕 Cerca pattern simili
+                    if ':' in device_id:
+                        # Prova a cercare con pattern
+                        device_suffix = device_id.split(':')[-1]  # es: DIGIL_IND_0751
+                        pattern_query = {"clientId": {"$regex": device_suffix}}
+                        pattern_count = self.collection.count_documents(pattern_query, limit=5)
+                        print(f"      🔎 Documenti con pattern '{device_suffix}': {pattern_count}")
+                        
+                        if pattern_count > 0:
+                            # Mostra un esempio di clientId trovato
+                            sample = self.collection.find_one(pattern_query, {"clientId": 1})
+                            if sample:
+                                print(f"      💡 Esempio clientId trovato: {sample.get('clientId')}")
+                else:
+                    # 🆕 Cerca se ci sono metriche _calc per questo device
+                    calc_query = {
+                        "clientId": device_id,
+                        f"payload.metrics.{alarm_metric}_calc": {"$exists": True}
+                    }
+                    calc_count = self.collection.count_documents(calc_query, limit=10)
+                    print(f"      🔎 Documenti con metrica {alarm_metric}_calc esistente: {calc_count}")
+                    
+                    if calc_count > 0:
+                        # La metrica esiste ma value != true
+                        sample = self.collection.find_one(calc_query, {f"payload.metrics.{alarm_metric}_calc": 1})
+                        if sample and 'payload' in sample:
+                            calc_value = sample.get('payload', {}).get('metrics', {}).get(f"{alarm_metric}_calc", {})
+                            print(f"      💡 Valore attuale della metrica: {calc_value}")
+                    else:
+                        # 🆕 Lista tutte le metriche disponibili per debug
+                        any_doc = self.collection.find_one({"clientId": device_id}, {"payload.metrics": 1})
+                        if any_doc and 'payload' in any_doc and 'metrics' in any_doc['payload']:
+                            available_metrics = list(any_doc['payload']['metrics'].keys())
+                            calc_metrics = [m for m in available_metrics if '_calc' in m]
+                            print(f"      📋 Metriche _calc disponibili: {calc_metrics[:10]}{'...' if len(calc_metrics) > 10 else ''}")
+                
+                return result
+            
             # Get the first (most recent) document
-            document = None
-            try:
-                document = next(cursor, None)
-            except StopIteration:
-                document = None
+            document = documents[0]
             
             if document:
                 result['found'] = True
                 result['active'] = True
                 
-                # DEBUG: Stampa struttura documento per capire dove sta il timestamp
-                print(f"   📄 MongoDB document keys: {list(document.keys())}")
+                # 🆕 Debug: Stampa struttura documento
+                print(f"      📄 Document keys: {list(document.keys())}")
+                print(f"      📄 receivedOn: {document.get('receivedOn', 'N/A')}")
+                
                 if 'payload' in document:
-                    print(f"   📄 Payload keys: {list(document['payload'].keys()) if isinstance(document['payload'], dict) else 'not a dict'}")
+                    payload_keys = list(document['payload'].keys()) if isinstance(document['payload'], dict) else 'not a dict'
+                    print(f"      📄 Payload keys: {payload_keys}")
                 
                 # Extract timestamp - priorità: receivedOn -> timestamp -> payload.metrics.TIMESTAMP
                 timestamp_value = None
@@ -191,13 +303,13 @@ class MongoDBAlarmChecker:
                 # Prova 1: receivedOn (sempre disponibile, più semplice)
                 timestamp_value = document.get('receivedOn')
                 if timestamp_value:
-                    print(f"   ✓ Timestamp da receivedOn: {timestamp_value}")
+                    print(f"      ✓ Timestamp da receivedOn: {timestamp_value}")
                 
                 # Prova 2: timestamp a root level (fallback)
                 if not timestamp_value:
                     timestamp_value = document.get('timestamp')
                     if timestamp_value:
-                        print(f"   ✓ Timestamp da root level: {timestamp_value}")
+                        print(f"      ✓ Timestamp da root level: {timestamp_value}")
                 
                 # Prova 3: payload.metrics.TIMESTAMP.value (più preciso ma più complesso)
                 if not timestamp_value and 'payload' in document and isinstance(document['payload'], dict):
@@ -205,7 +317,7 @@ class MongoDBAlarmChecker:
                         timestamp_metric = document['payload']['metrics'].get('TIMESTAMP')
                         if timestamp_metric and isinstance(timestamp_metric, dict):
                             timestamp_value = timestamp_metric.get('value')
-                            print(f"   ✓ Timestamp da payload.metrics.TIMESTAMP: {timestamp_value}")
+                            print(f"      ✓ Timestamp da payload.metrics.TIMESTAMP: {timestamp_value}")
                 
                 if timestamp_value:
                     try:
@@ -221,10 +333,14 @@ class MongoDBAlarmChecker:
                         # Formatta per visualizzazione
                         dt = datetime.fromtimestamp(timestamp_value_seconds)
                         result['timestamp'] = dt.strftime('%d/%m/%y - %H:%M:%S')
+                        
+                        print(f"      ✅ Timestamp formattato: {result['timestamp']}")
                     except Exception as e:
+                        print(f"      ⚠️ Errore formattazione timestamp: {e}")
                         result['timestamp'] = str(timestamp_value)
                         result['timestamp_unix'] = None
                 else:
+                    print(f"      ⚠️ Nessun timestamp trovato nel documento")
                     result['timestamp'] = 'N/A'
                     result['timestamp_unix'] = None
             
@@ -232,12 +348,17 @@ class MongoDBAlarmChecker:
             
         except OperationFailure as e:
             result['error'] = f"Query failed: {e}"
+            print(f"      ❌ OperationFailure: {e}")
             return result
         except ServerSelectionTimeoutError as e:
             result['error'] = f"MongoDB timeout: {e}"
+            print(f"      ❌ ServerSelectionTimeoutError: {e}")
             return result
         except Exception as e:
-            result['error'] = f"Unexpected error: {e}"
+            result['error'] = f"Unexpected error: {type(e).__name__}: {e}"
+            print(f"      ❌ Exception: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
             return result
     
     def __enter__(self):
@@ -299,10 +420,10 @@ if __name__ == "__main__":
     import sys
     
     # Test the MongoDB connection and alarm check
-    test_device_id = "1:1:2:15:21:DIGIL_IND_0015"
-    test_alarm_metric = "EAM_OUT_ALG_19_VAR_20"  # TC_F8B_L1 Max alarm
+    test_device_id = "1:1:2:16:21:DIGIL_IND_0751"  # Il device che stai testando
+    test_alarm_metric = "EAM_OUT_ALG_19_VAR_14"  # Uno degli allarmi mancanti
     
-    print("🧪 Testing MongoDB Alarm Checker\n")
+    print("🧪 Testing MongoDB Alarm Checker - ENHANCED LOGGING\n")
     print("⚠️  Make sure .env file is configured with SSH and MongoDB credentials!\n")
     
     try:
@@ -314,18 +435,21 @@ if __name__ == "__main__":
                 
                 result = checker.check_alarm_boolean(test_device_id, test_alarm_metric)
                 
-                print("📊 Result:")
+                print("\n" + "="*60)
+                print("📊 FINAL RESULT:")
                 print(f"   Found: {result['found']}")
                 print(f"   Active: {result['active']}")
                 print(f"   Timestamp: {result['timestamp']}")
+                print(f"   Timestamp Unix: {result['timestamp_unix']}")
                 print(f"   Metric Checked: {result['metric_checked']}")
                 if result['error']:
                     print(f"   Error: {result['error']}")
+                print("="*60)
                     
                 if result['active']:
                     print("\n✅ Alarm boolean is TRUE - test would be VALIDATED!")
                 else:
-                    print("\n❌ Alarm boolean is FALSE or not found - waiting for alarm...")
+                    print("\n❌ Alarm boolean is FALSE or not found")
             else:
                 print("❌ Failed to connect to MongoDB")
                 sys.exit(1)
