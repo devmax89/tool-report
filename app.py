@@ -951,18 +951,22 @@ def monitoring_page():
 def open_browser():
     """Apre il browser dopo 1.5 secondi"""
     time.sleep(1.5)
-    webbrowser.open('http://localhost:5000')
+    webbrowser.open(f'http://localhost:{APP_PORT}')
 
 if __name__ == '__main__':
+    import platform as _platform
+    # Su macOS la porta 5000 è occupata da AirPlay Receiver
+    APP_PORT = 5001 if _platform.system() == 'Darwin' else 5000
+
     local_ip = get_local_ip() if 'get_local_ip' in locals() else '127.0.0.1'
-    
+
     if getattr(sys, 'frozen', False):
         threading.Thread(target=open_browser, daemon=True).start()
         print("🚀 DIGIL Report Generator avviato!")
         print("📱 Il browser si aprirà automaticamente...")
-        print("🌐 URL locale: http://localhost:5000")
-        print(f"🌐 URL rete: http://{local_ip}:5000")
+        print(f"🌐 URL locale: http://localhost:{APP_PORT}")
+        print(f"🌐 URL rete: http://{local_ip}:{APP_PORT}")
         print("❌ Per chiudere: premi Ctrl+C")
-    
+
     # Usa socketio.run invece di app.run
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=APP_PORT)
