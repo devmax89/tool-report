@@ -131,7 +131,7 @@ class EmailService:
 
         return {'to': ['m.tavernese@reply.it'], 'cc': []}
 
-    def _render_html_body(self, vendor, device_id, date_formatted, zip_path, collaudo_scorte):
+    def _render_html_body(self, vendor, device_id, date_formatted, zip_path, collaudo_scorte, pn='', sn=''):
         """Carica e renderizza il template HTML email"""
         if getattr(sys, 'frozen', False):
             base_path = Path(sys.executable).parent
@@ -148,13 +148,15 @@ class EmailService:
         return template.render(
             vendor=vendor,
             device_id=device_id,
+            pn=pn,
+            sn=sn,
             date_formatted=date_formatted,
             send_datetime=datetime.now().strftime('%d/%m/%Y %H:%M'),
             filename=os.path.basename(zip_path),
             scorte_label=scorte_label
         )
 
-    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False):
+    def send_via_outlook_com(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False, pn='', sn=''):
         """Invia email usando Outlook COM API (Windows only)"""
         try:
             import win32com.client
@@ -185,7 +187,7 @@ class EmailService:
 
                 scorte_label = "Scorte " if collaudo_scorte else ""
                 mail.Subject = f"Report {scorte_label}DIGIL - {vendor} - {date_formatted} - Device {device_id}"
-                mail.HTMLBody = self._render_html_body(vendor, device_id, date_formatted, zip_path, collaudo_scorte)
+                mail.HTMLBody = self._render_html_body(vendor, device_id, date_formatted, zip_path, collaudo_scorte, pn, sn)
 
                 # Converti il percorso in assoluto
                 absolute_path = os.path.abspath(zip_path)
@@ -213,7 +215,7 @@ class EmailService:
         except Exception as e:
             return False, f"Errore invio tramite Outlook COM: {str(e)}"
 
-    def send_via_outlook_mac(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False):
+    def send_via_outlook_mac(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False, pn='', sn=''):
         """Invia email usando Outlook for Mac via AppleScript"""
         html_temp_path = None
         script_temp_path = None
@@ -233,7 +235,7 @@ class EmailService:
             subject_escaped = subject.replace('\\', '\\\\').replace('"', '\\"')
 
             # Scrivi HTML su file temporaneo (evita problemi di escape in AppleScript)
-            html_body = self._render_html_body(vendor, device_id, date_formatted, zip_path, collaudo_scorte)
+            html_body = self._render_html_body(vendor, device_id, date_formatted, zip_path, collaudo_scorte, pn, sn)
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
                 html_temp_path = f.name
                 f.write(html_body)
@@ -307,13 +309,13 @@ end tell
                     except:
                         pass
 
-    def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False):
+    def send_report_email(self, zip_path, vendor, device_id, date_formatted, send_to_custom=None, collaudo_scorte=False, pn='', sn=''):
         """Metodo principale per l'invio email"""
         try:
             if self.active_provider == 'outlook_com':
-                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted, send_to_custom, collaudo_scorte)
+                return self.send_via_outlook_com(zip_path, vendor, device_id, date_formatted, send_to_custom, collaudo_scorte, pn, sn)
             elif self.active_provider == 'outlook_mac':
-                return self.send_via_outlook_mac(zip_path, vendor, device_id, date_formatted, send_to_custom, collaudo_scorte)
+                return self.send_via_outlook_mac(zip_path, vendor, device_id, date_formatted, send_to_custom, collaudo_scorte, pn, sn)
             else:
                 return False, "Invio email disabilitato: Outlook non disponibile."
         except Exception as e:

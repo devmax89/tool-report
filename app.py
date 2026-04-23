@@ -244,6 +244,101 @@ def update_common_parameters(ws, data):
     
     print(f"=== FINE DEBUG SHEET: {ws.title} ===\n")
 
+def insert_pn_sn_rows(ws, pn, sn):
+    """Inserisce due righe (PN, SN) tra Vendor e Device ID, replicando stile e merge della riga Vendor."""
+    from copy import copy as _copy
+
+    vendor_row = None
+    device_row = None
+    for row in range(1, 25):
+        v = ws.cell(row=row, column=1).value
+        if isinstance(v, str):
+            s = v.strip()
+            if s == "Vendor" and vendor_row is None:
+                vendor_row = row
+            elif s == "Device ID" and device_row is None:
+                device_row = row
+    if not (vendor_row and device_row) or device_row <= vendor_row:
+        return
+
+    # Evita doppia insertion
+    for row in range(vendor_row + 1, device_row):
+        lbl = ws.cell(row=row, column=1).value
+        if isinstance(lbl, str) and lbl.strip() in ("PN", "SN"):
+            return
+
+    vendor_merges = []
+    for mr in list(ws.merged_cells.ranges):
+        if mr.min_row == vendor_row and mr.max_row == vendor_row:
+            vendor_merges.append((mr.min_col, mr.max_col))
+
+    max_col = max([mx for _, mx in vendor_merges] + [ws.max_column, 4])
+
+    # Sposta manualmente tutte le merge che iniziano a partire da device_row
+    # (openpyxl.insert_rows non sposta le merged_cells in modo affidabile)
+    merges_to_shift = []
+    for mr in list(ws.merged_cells.ranges):
+        if mr.min_row >= device_row:
+            merges_to_shift.append((mr.min_row, mr.max_row, mr.min_col, mr.max_col))
+            ws.merged_cells.ranges.remove(mr)
+
+    ws.insert_rows(device_row, amount=2)
+
+    for (r1, r2, c1, c2) in merges_to_shift:
+        try:
+            ws.merge_cells(start_row=r1 + 2, start_column=c1, end_row=r2 + 2, end_column=c2)
+        except Exception:
+            pass
+
+    try:
+        src_h = ws.row_dimensions[vendor_row].height
+    except Exception:
+        src_h = None
+
+    for new_row in (device_row, device_row + 1):
+        if src_h is not None:
+            try:
+                ws.row_dimensions[new_row].height = src_h
+            except Exception:
+                pass
+        for col in range(1, max_col + 1):
+            src = ws.cell(row=vendor_row, column=col)
+            dst = ws.cell(row=new_row, column=col)
+            if src.has_style:
+                try:
+                    dst.font = _copy(src.font)
+                    dst.fill = _copy(src.fill)
+                    dst.border = _copy(src.border)
+                    dst.alignment = _copy(src.alignment)
+                    dst.number_format = src.number_format
+                    dst.protection = _copy(src.protection)
+                except Exception:
+                    pass
+        for (mn, mx) in vendor_merges:
+            if mx > mn:
+                try:
+                    ws.merge_cells(start_row=new_row, start_column=mn, end_row=new_row, end_column=mx)
+                except Exception:
+                    pass
+
+    value_col = None
+    for (mn, mx) in vendor_merges:
+        if mn > 1:
+            value_col = mn
+            break
+    if value_col is None:
+        for col in range(2, max_col + 1):
+            if ws.cell(row=vendor_row, column=col).value is not None:
+                value_col = col
+                break
+    if value_col is None:
+        value_col = 3
+
+    ws.cell(row=device_row, column=1).value = "PN"
+    ws.cell(row=device_row, column=value_col).value = pn
+    ws.cell(row=device_row + 1, column=1).value = "SN"
+    ws.cell(row=device_row + 1, column=value_col).value = sn
+
 def update_downlink_parameters(ws, transformed_device_id, data):
     """Aggiorna i parametri dello sheet Downlink - VERSIONE CORRETTA"""
     start_iso, end_iso = format_date_for_api(data['start_date'], data['start_time'], 
@@ -306,6 +401,8 @@ def create_excel_report(data):
         'end_test': end_formatted,
         'vendor': data['vendor'],
         'device_id': data['device_id'],
+        'pn': data.get('pn', ''),
+        'sn': data.get('sn', ''),
         'start_date': data['start_date'],
         'start_time': data['start_time'],
         'end_date': data['end_date'],
@@ -405,10 +502,13 @@ def create_excel_report(data):
     # Aggiorna ogni sheet rimanente
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
-        
+
         # Aggiorna parametri comuni
         update_common_parameters(ws, common_data)
-        
+
+        # Inserisci righe PN e SN tra Vendor e Device ID
+        insert_pn_sn_rows(ws, common_data.get('pn', ''), common_data.get('sn', ''))
+
         # Aggiornamenti specifici per Downlink (solo se abilitato)
         if enable_downlink and "Downlink" in sheet_name:
             update_downlink_parameters(ws, transformed_device_id, common_data)
@@ -482,6 +582,8 @@ def generate_report():
             'end_time': request.form['end_time'],
             'vendor': request.form['vendor'],
             'device_id': request.form['device_id'],
+            'pn': request.form.get('pn', '').strip(),
+            'sn': request.form.get('sn', '').strip(),
             'enable_downlink': request.form.get('enable_downlink') == 'on',
             'enable_allarme': request.form.get('enable_allarme') == 'on',  # NUOVO
             'collaudo_scorte': request.form.get('collaudo_scorte') == 'on'  # COLLAUDO SCORTE
@@ -491,6 +593,10 @@ def generate_report():
         print(f"   Scenario Allarme: {'ABILITATO' if data['enable_allarme'] else 'DISABILITATO'}")
         print(f"   Scenario Downlink: {'ABILITATO' if data['enable_downlink'] else 'DISABILITATO'}")
         print(f"   Collaudo Scorte: {'ABILITATO' if data['collaudo_scorte'] else 'DISABILITATO'}")
+
+        # VALIDAZIONE PN/SN (obbligatori)
+        if not data['pn'] or not data['sn']:
+            return render_template('error.html', error_message="PN e SN sono obbligatori per generare il report.")
 
         # VALIDAZIONE DATA/ORA
         is_valid, error_message = validate_datetime_range(
@@ -565,13 +671,15 @@ def generate_report():
                 
                 if custom_email:
                     success, message = email_service.send_report_email(
-                        zip_path, data['vendor'], data['device_id'], 
-                        date_formatted, custom_email, data.get('collaudo_scorte', False)
+                        zip_path, data['vendor'], data['device_id'],
+                        date_formatted, custom_email, data.get('collaudo_scorte', False),
+                        pn=data['pn'], sn=data['sn']
                     )
                 else:
                     success, message = email_service.send_report_email(
                         zip_path, data['vendor'], data['device_id'], date_formatted,
-                        collaudo_scorte=data.get('collaudo_scorte', False)
+                        collaudo_scorte=data.get('collaudo_scorte', False),
+                        pn=data['pn'], sn=data['sn']
                     )
                 
                 email_result = {'success': success, 'message': message}
